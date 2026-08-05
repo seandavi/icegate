@@ -344,8 +344,14 @@ The gateway SHALL NOT proxy Parquet reads.
 Clients reach object storage via **credential vending**, which the
 backend catalog already implements:
 
-1. The client sends `X-Iceberg-Access-Delegation: vended-credentials`
-   (PyIceberg, DuckDB, Spark, and Trino all do).
+1. The client sends `X-Iceberg-Access-Delegation: vended-credentials`.
+   PyIceberg and DuckDB send it by default. Spark (Iceberg Java REST
+   client) and Trino do **not** — the operator must configure it:
+   Spark via the catalog property
+   `header.X-Iceberg-Access-Delegation=vended-credentials`, Trino via
+   `iceberg.rest-catalog.vended-credentials-enabled=true`. The gateway
+   cannot force clients to request vended credentials; it only forwards
+   the header and the resulting credentials unchanged.
 2. The gateway MUST forward this header unchanged.
 3. The backend returns temporary, table-scoped storage credentials in
    the `loadTable` response; the gateway MUST forward them unchanged.
