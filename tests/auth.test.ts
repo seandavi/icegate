@@ -4,9 +4,12 @@ import { type Config, loadConfig } from "../src/config";
 import app, { useConfig } from "../src/index";
 
 const ALICE_KEY = "icegate_test_alice_key";
+const BOB_KEY = "icegate_test_bob_key";
 
 // alice is scoped to a namespace anonymous cannot reach (tcga), so a 200 there
-// proves the key matched rather than falling through to anonymous.
+// proves the key matched rather than falling through to anonymous. bob has
+// write permission, for exercising catalog capabilities independent of the
+// principal's own permissions.
 async function buildConfig(): Promise<Config> {
   const yaml = `
 authentication:
@@ -20,6 +23,10 @@ authentication:
       sha256: ${await sha256Hex(ALICE_KEY)}
       namespaces: [geo, tcga]
       permissions: [read]
+    bob:
+      sha256: ${await sha256Hex(BOB_KEY)}
+      namespaces: [geo, tcga]
+      permissions: [read, write]
 catalogs:
   omicidx:
     endpoint: https://catalog.example.com/acct/omicidx
@@ -34,6 +41,7 @@ catalogs:
 }
 
 const alice = { authorization: `Bearer ${ALICE_KEY}` };
+const bob = { authorization: `Bearer ${BOB_KEY}` };
 
 beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn(() => Response.json({})));
@@ -95,6 +103,43 @@ describe("auth, through the composed app", () => {
   it("classifies POST .../plan as a read operation", async () => {
     const res = await app.request("/v1/omicidx/namespaces/geo/tables/t1/plan", { method: "POST", headers: alice });
     expect(res.status).toBe(200);
+  });
+
+  it("denies a read-only principal creating a namespace, a namespace-less write, with 403 (#19)", async () => {
+    const res = await app.request("/v1/omicidx/namespaces", { method: "POST", headers: alice });
+    expect(res.status).toBe(403);
+  });
+
+  it("denies a read-only principal renaming a table, a namespace-less write, with 403 (#19)", async () => {
+    const res = await app.request("/v1/omicidx/tables/rename", { method: "POST", headers: alice });
+    expect(res.status).toBe(403);
+  });
+
+  it("blocks a write-capable principal against a catalog configured capabilities.write: false (#20)", async () => {
+    const res = await app.request("/v1/omicidx/namespaces", { method: "POST", headers: bob });
+    expect(res.status).toBe(403);
+  });
+
+  it("blocks a read against a catalog configured capabilities.read: false (#20)", async () => {
+    const config = await buildConfig();
+    config.catalogs.omicidx!.capabilities.read = false;
+    useConfig(config);
+    const res = await app.request("/v1/omicidx/namespaces/geo/tables", { headers: alice });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns ErrorModel-shaped bodies for 401 and 403 (SPEC §15)", async () => {
+    const unauthorized = await app.request("/v1/omicidx/namespaces/geo/tables", {
+      headers: { authorization: "Bearer icegate_bogus" },
+    });
+    expect(await unauthorized.json()).toEqual({
+      error: { message: expect.any(String), type: expect.any(String), code: 401 },
+    });
+
+    const forbidden = await app.request("/v1/omicidx/namespaces", { method: "POST", headers: alice });
+    expect(await forbidden.json()).toEqual({
+      error: { message: expect.any(String), type: expect.any(String), code: 403 },
+    });
   });
 
   it("bypasses auth entirely for /health (SPEC §16)", async () => {

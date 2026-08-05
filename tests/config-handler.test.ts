@@ -144,8 +144,9 @@ describe("/v1/:prefix/*", () => {
   });
 
   it("replaces the client Authorization header and forwards the method and body", async () => {
+    // omicidx is capabilities.write: false (#20 blocks it); prefixed allows writes.
     respond({}, { status: 201 });
-    const res = await app.request("/v1/omicidx/namespaces", {
+    const res = await app.request("/v1/prefixed/namespaces", {
       method: "POST",
       headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({ namespace: ["geo"] }),
@@ -153,7 +154,7 @@ describe("/v1/:prefix/*", () => {
 
     const { init, headers } = calledWith();
     expect(init.method).toBe("POST");
-    expect(headers.get("Authorization")).toBe("Bearer backend-token");
+    expect(headers.get("Authorization")).toBe("Bearer other-token");
     expect(res.status).toBe(201);
   });
 
