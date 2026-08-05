@@ -287,6 +287,15 @@ anonymous:
     - read
 ```
 
+## Multipart namespaces
+
+Iceberg encodes a multipart namespace as a single path segment whose
+levels are joined by the unit separator `0x1F` (`geo%1Fsub`). The
+gateway decodes that segment exactly once and scopes authorization on
+its **top-level** namespace, so a principal granted `geo` also reaches
+`geo.sub`; the segment is forwarded to the backend still encoded. A
+segment carrying malformed percent-encoding is a 400 (Section 15).
+
 ## Read vs write classification
 
 `read` and `write` are enforced per REST operation, not per HTTP

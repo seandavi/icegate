@@ -3,8 +3,8 @@ import { authMiddleware } from "./auth/index.js";
 import { type Config, loadConfig } from "./config/index.js";
 import { requestLogger } from "./logging/index.js";
 import { metricsMiddleware } from "./metrics/index.js";
+import { parseGatewayPath } from "./context.js";
 import { catalogRoutes } from "./routing/routes.js";
-import "./context.js";
 
 const app = new Hono();
 
@@ -33,6 +33,12 @@ async function resolveConfig(env: Record<string, string | undefined>): Promise<C
 // Hono context, and the principal, namespace and backend set downstream would
 // never reach requestLogger or metricsMiddleware above (SPEC §13, §14).
 app.use("/v1/*", async (c, next) => {
+  const path = parseGatewayPath(new URL(c.req.url).pathname);
+  if (!path) {
+    const error = { message: "malformed percent-encoding in request path", type: "BadRequestException", code: 400 };
+    return c.json({ error }, 400);
+  }
+  c.set("path", path);
   c.set("config", await resolveConfig(c.env as Record<string, string | undefined>));
   await next();
 });

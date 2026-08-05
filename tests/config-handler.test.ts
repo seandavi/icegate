@@ -1,41 +1,50 @@
-import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Config } from "../src/config";
-import { catalogRoutes } from "../src/routing/routes";
+import { sha256Hex } from "../src/auth";
+import { type Config, loadConfig } from "../src/config";
+import app, { useConfig } from "../src/index";
 
-const config = {
-  authentication: { anonymous: { enabled: true } },
-  catalogs: {
-    omicidx: {
-      endpoint: "https://catalog.example.com/acct/omicidx",
-      backend_warehouse: "acct_omicidx",
-      backend_prefix: "",
-      auth: { bearer_token: "backend-token" },
-      capabilities: { read: true, write: false },
-    },
-    prefixed: {
-      endpoint: "https://lakekeeper.example.com",
-      backend_warehouse: "wh",
-      backend_prefix: "main",
-      auth: { bearer_token: "other-token" },
-      capabilities: { read: true, write: true },
-    },
-  },
-} satisfies Config;
+const KEY = "icegate_test_routing_key";
 
-// Routing in isolation — the composed app (auth included) is exercised in
-// tests/app.test.ts; here only the context the routes read is supplied.
-const app = new Hono();
-app.use("*", (c, next) => {
-  c.set("config", config);
-  return next();
-});
-app.route("/", catalogRoutes);
+async function buildConfig(): Promise<Config> {
+  const yaml = `
+authentication:
+  anonymous:
+    enabled: true
+    namespaces: [geo]
+    permissions: [read, write]
+  api_keys:
+    enabled: true
+    tester:
+      sha256: ${await sha256Hex(KEY)}
+      namespaces: [geo]
+      permissions: [read, write]
+catalogs:
+  omicidx:
+    endpoint: https://catalog.example.com/acct/omicidx
+    backend_warehouse: acct_omicidx
+    backend_prefix: ""
+    auth:
+      bearer_token: backend-token
+    capabilities:
+      read: true
+      write: false
+  prefixed:
+    endpoint: https://lakekeeper.example.com
+    backend_warehouse: wh
+    backend_prefix: main
+    auth:
+      bearer_token: other-token
+    capabilities:
+      read: true
+      write: true
+`;
+  return loadConfig(yaml, {});
+}
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
 function respond(body: unknown, init: ResponseInit = {}) {
-  fetchMock.mockResolvedValue(Response.json(body, init));
+  fetchMock.mockImplementation(() => Response.json(body, init));
 }
 
 function calledWith() {
@@ -43,9 +52,10 @@ function calledWith() {
   return { url, init, headers: new Headers(init.headers) };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
+  useConfig(await buildConfig());
 });
 
 afterEach(() => {
@@ -67,7 +77,7 @@ describe("GET /v1/config", () => {
   it("forwards with backend_warehouse substituted and the catalog's bearer token", async () => {
     respond({});
     await app.request("/v1/config?warehouse=omicidx", {
-      headers: { Authorization: "Bearer icegate_clientkey", "X-Iceberg-Access-Delegation": "vended-credentials" },
+      headers: { Authorization: `Bearer ${KEY}`, "X-Iceberg-Access-Delegation": "vended-credentials" },
     });
 
     const { url, headers } = calledWith();
@@ -101,19 +111,6 @@ describe("GET /v1/config", () => {
   });
 });
 
-describe("the app's bundled config", () => {
-  it("loads config.yaml on the first gateway request and routes with it", async () => {
-    const { default: app } = await import("../src/index");
-    respond({});
-
-    const res = await app.request("/v1/config?warehouse=omicidx");
-    expect(res.status).toBe(200);
-    expect(calledWith().url).toBe(
-      "https://catalog.example.invalid/dev-account/omicidx/v1/config?warehouse=dev-account_omicidx",
-    );
-  });
-});
-
 describe("/v1/:prefix/*", () => {
   it("404s an unknown prefix without calling the backend", async () => {
     const res = await app.request("/v1/nope/namespaces");
@@ -133,17 +130,24 @@ describe("/v1/:prefix/*", () => {
     expect(calledWith().url).toBe("https://lakekeeper.example.com/v1/main/namespaces/geo/tables");
   });
 
-  it("keeps multipart namespaces percent-encoded", async () => {
+  it("authorizes a multipart namespace by its top level and forwards it still encoded", async () => {
     respond({});
-    await app.request("/v1/omicidx/namespaces/geo%1Fsub/tables");
+    const res = await app.request("/v1/omicidx/namespaces/geo%1Fsub/tables");
+    expect(res.status).toBe(200);
     expect(calledWith().url).toBe("https://catalog.example.com/acct/omicidx/v1/namespaces/geo%1Fsub/tables");
+  });
+
+  it("403s a multipart namespace whose top level the principal lacks", async () => {
+    const res = await app.request("/v1/omicidx/namespaces/private%1Fsub/tables");
+    expect(res.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("replaces the client Authorization header and forwards the method and body", async () => {
     respond({}, { status: 201 });
     const res = await app.request("/v1/omicidx/namespaces", {
       method: "POST",
-      headers: { Authorization: "Bearer icegate_clientkey", "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({ namespace: ["geo"] }),
     });
 
@@ -154,11 +158,12 @@ describe("/v1/:prefix/*", () => {
   });
 
   it("rewrites a Location header from the backend prefix to the public one", async () => {
-    fetchMock.mockResolvedValue(
-      new Response(null, {
-        status: 302,
-        headers: { Location: "https://catalog.example.com/acct/omicidx/v1/namespaces/geo" },
-      }),
+    fetchMock.mockImplementation(
+      () =>
+        new Response(null, {
+          status: 302,
+          headers: { Location: "https://catalog.example.com/acct/omicidx/v1/namespaces/geo" },
+        }),
     );
 
     const res = await app.request("https://gw.example.com/v1/omicidx/namespaces");
@@ -166,8 +171,8 @@ describe("/v1/:prefix/*", () => {
   });
 
   it("leaves a Location pointing elsewhere untouched", async () => {
-    fetchMock.mockResolvedValue(
-      new Response(null, { status: 302, headers: { Location: "https://elsewhere.example.com/login" } }),
+    fetchMock.mockImplementation(
+      () => new Response(null, { status: 302, headers: { Location: "https://elsewhere.example.com/login" } }),
     );
 
     const res = await app.request("https://gw.example.com/v1/omicidx/namespaces");

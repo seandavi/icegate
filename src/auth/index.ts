@@ -32,28 +32,20 @@ function principalsByDigest(config: Config): Map<string, Principal> {
   return index;
 }
 
-// SPEC §10: `/v1/<prefix>/namespaces/<ns>/...`. `<ns>` may be a single
-// URL-encoded segment representing multiple levels joined by %1F; per
-// ticket scope we don't split on that separator, just decode the segment
-// and use it whole as the namespace key.
-function extractNamespace(pathname: string): string | null {
-  const segments = pathname.split("/").filter(Boolean);
-  if (segments.length >= 4 && segments[0] === "v1" && segments[2] === "namespaces") {
-    return decodeURIComponent(segments[3]);
-  }
-  return null;
-}
-
 // SPEC §9: read = GET/HEAD, plus POST scan-planning/metrics endpoints.
 // Everything else is write.
-function classifyOperation(method: string, pathname: string): Permission {
+function classifyOperation(method: string, rest: string): Permission {
   const m = method.toUpperCase();
   if (m === "GET" || m === "HEAD") return "read";
-  if (m === "POST" && (pathname.endsWith("/plan") || pathname.endsWith("/tasks") || pathname.endsWith("/metrics"))) {
+  if (m === "POST" && (rest.endsWith("/plan") || rest.endsWith("/tasks") || rest.endsWith("/metrics"))) {
     return "read";
   }
   return "write";
 }
+
+// SPEC §9: a multipart namespace is one segment whose levels are joined by
+// 0x1F; scoping is checked against its top level, so `geo` covers `geo.sub`.
+const NAMESPACE_SEPARATOR = "\u001f";
 
 function unauthorized(c: Context) {
   return c.json({ error: "unauthorized" }, 401);
@@ -97,12 +89,13 @@ export async function authMiddleware(c: Context, next: Next) {
 
   c.set("principal", principal.name);
 
-  const namespace = extractNamespace(c.req.path);
+  const { rest, namespace } = c.get("path");
   c.set("namespace", namespace);
 
   if (namespace !== null) {
-    const op = classifyOperation(c.req.method, c.req.path);
-    if (!principal.namespaces.includes(namespace) || !principal.permissions.includes(op)) {
+    const op = classifyOperation(c.req.method, rest);
+    const topLevel = namespace.split(NAMESPACE_SEPARATOR)[0];
+    if (!principal.namespaces.includes(topLevel) || !principal.permissions.includes(op)) {
       return forbidden(c);
     }
   }

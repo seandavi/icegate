@@ -58,6 +58,18 @@ describe("app pipeline (auth mounted ahead of routes)", () => {
     const res = await app.request("/v1/nosuch/namespaces", { headers: alice });
     expect(res.status).toBe(404);
   });
+
+  // #18: decoding a malformed segment used to throw URIError → 500.
+  it("400s a malformed percent-encoded segment with an ErrorModel body", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Response.json({})));
+
+    const res = await app.request("/v1/omicidx/namespaces/%C3/tables", { headers: alice });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: { message: expect.any(String), type: "BadRequestException", code: 400 },
+    });
+  });
 });
 
 // One dispatch, one context (#17): what auth and routing set has to reach the

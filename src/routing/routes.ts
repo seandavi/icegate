@@ -31,14 +31,12 @@ catalogRoutes.get("/v1/config", async (c) => {
 });
 
 catalogRoutes.all("/v1/:prefix/*", (c) => {
-  const prefix = c.req.param("prefix");
+  // `rest` comes off the raw pathname (src/context.ts), so Iceberg's %1F
+  // namespace separators reach the backend still encoded.
+  const { prefix, rest } = c.get("path");
   const catalog = resolveCatalog(c.get("config"), prefix);
   if (!catalog) return notFound(`unknown catalog prefix: ${prefix}`);
   c.set("backend", catalog.name);
 
-  // Raw pathname, never c.req.path: Iceberg encodes multipart namespaces with
-  // %1F separators, which must reach the backend still encoded.
-  const url = new URL(c.req.url);
-  const rest = url.pathname.slice(`/v1/${catalog.name}/`.length);
-  return forward(c.req.raw, buildBackendUrl(catalog, rest, url.search), catalog);
+  return forward(c.req.raw, buildBackendUrl(catalog, rest, new URL(c.req.url).search), catalog);
 });
