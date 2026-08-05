@@ -2,7 +2,14 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { errorResponse } from "../errors.js";
 import { forward } from "../proxy/index.js";
-import { buildBackendUrl, type Catalog, type ConfigBody, resolveCatalog, transformConfigResponse } from "./index.js";
+import {
+  backendConfigUrl,
+  buildBackendUrl,
+  type Catalog,
+  type ConfigBody,
+  resolveCatalog,
+  transformConfigResponse,
+} from "./index.js";
 
 /**
  * The Iceberg REST routes (SPEC §10): `GET /v1/config?warehouse=<name>` hands
@@ -29,7 +36,7 @@ catalogRoutes.get("/v1/config", async (c) => {
   const query = new URL(c.req.url).searchParams;
   query.set("warehouse", catalog.backend_warehouse);
 
-  const response = await proxy(c, catalog, "config", query);
+  const response = await proxy(c, catalog, backendConfigUrl(catalog, query));
   if (response.status !== 200) return response;
 
   const body = transformConfigResponse((await response.json()) as ConfigBody, catalog.name, new URL(c.req.url).origin);
@@ -43,7 +50,7 @@ catalogRoutes.all("/v1/:prefix/*", (c) => {
   const catalog = resolveCatalog(c.get("config"), prefix);
   if (!catalog) return notFound(`unknown catalog prefix: ${prefix}`);
 
-  return proxy(c, catalog, rest, new URL(c.req.url).search);
+  return proxy(c, catalog, buildBackendUrl(catalog, rest, new URL(c.req.url).search));
 });
 
 function notFound(message: string) {
@@ -51,9 +58,9 @@ function notFound(message: string) {
 }
 
 /** Records the resolved backend (SPEC §13/§14) and forwards. */
-function proxy(c: Context, catalog: Catalog, rest: string, query?: URLSearchParams | string): Promise<Response> {
+function proxy(c: Context, catalog: Catalog, url: string): Promise<Response> {
   c.set("backend", catalog.name);
-  return forward(c.req.raw, buildBackendUrl(catalog, rest, query), catalog);
+  return forward(c.req.raw, url, catalog);
 }
 
 /**

@@ -104,6 +104,13 @@ describe("GET /v1/config", () => {
     });
   });
 
+  // /v1/config is prefix-less by protocol; R2 404s a prefixed config URL.
+  it("never inserts backend_prefix into the config request", async () => {
+    respond({});
+    await app.request("/v1/config?warehouse=prefixed", { headers: { Authorization: `Bearer ${KEY}` } });
+    expect(calledWith().url).toBe("https://lakekeeper.example.com/v1/config?warehouse=wh");
+  });
+
   it("preserves a non-200 backend status", async () => {
     respond({ error: { message: "boom" } }, { status: 503 });
     const res = await app.request("/v1/config?warehouse=omicidx");

@@ -26,6 +26,15 @@ export function buildBackendUrl(catalog: Catalog, rest: string, query?: URLSearc
   return `${backendBase(catalog)}${rest.replace(/^\/+/, "")}${search ? `?${search}` : ""}`;
 }
 
+/**
+ * `/v1/config` is prefix-less by protocol — the prefix is what the config
+ * response *hands out*, so the request never carries one (R2 404s otherwise).
+ */
+export function backendConfigUrl(catalog: Catalog, query: URLSearchParams): string {
+  const endpoint = catalog.endpoint.replace(/\/+$/, "");
+  return `${endpoint}/v1/config?${query}`;
+}
+
 export type ConfigBody = {
   defaults?: Record<string, unknown>;
   overrides?: Record<string, unknown>;
