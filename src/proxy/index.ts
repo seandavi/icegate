@@ -1,4 +1,10 @@
+import { errorResponse } from "../errors.js";
 import { backendBase, type Catalog } from "../routing/index.js";
+
+// ponytail: a constant, not config — no deployment has asked for a different
+// value, and Workers caps a request at well under this anyway. Promote to
+// config the day one does.
+const UPSTREAM_TIMEOUT_MS = 30_000;
 
 // Connection-specific headers that MUST NOT be forwarded (RFC 9110 §7.6.1).
 const HOP_BY_HOP = [
@@ -17,9 +23,12 @@ const HOP_BY_HOP = [
 /**
  * Forwards a client request to `url` with the catalog's own credentials.
  * The client-facing bearer value is never passed through (SPEC §8); every
- * other header, notably `X-Iceberg-Access-Delegation`, goes untouched.
+ * other header, notably `X-Iceberg-Access-Delegation`, goes untouched, and so
+ * does the backend's response — status included (SPEC §11, §15).
  *
- * Error mapping, timeouts and CORS are ticket #10 — this is transport only.
+ * A backend that times out, refuses the connection or drops it becomes a 502:
+ * SPEC §19 names 502 for the backend-failure case, and all three are the same
+ * failure to a client. 503 stays reserved for the gateway's own unavailability.
  */
 export async function forward(request: Request, url: string, catalog: Catalog): Promise<Response> {
   const headers = new Headers(request.headers);
@@ -27,14 +36,21 @@ export async function forward(request: Request, url: string, catalog: Catalog): 
   headers.set("Authorization", `Bearer ${catalog.auth.bearer_token}`);
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
-  const response = await fetch(url, {
-    method: request.method,
-    headers,
-    body: hasBody ? request.body : undefined,
-    redirect: "manual",
-    // Required when streaming a request body; not in the DOM lib's RequestInit.
-    ...(hasBody ? { duplex: "half" } : {}),
-  } as RequestInit);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: request.method,
+      headers,
+      body: hasBody ? request.body : undefined,
+      redirect: "manual",
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      // Required when streaming a request body; not in the DOM lib's RequestInit.
+      ...(hasBody ? { duplex: "half" } : {}),
+    } as RequestInit);
+  } catch (err) {
+    const cause = (err as Error).name === "TimeoutError" ? `timed out after ${UPSTREAM_TIMEOUT_MS}ms` : "is unreachable";
+    return errorResponse(502, "BadGatewayException", `backend catalog "${catalog.name}" ${cause}`);
+  }
 
   const location = response.headers.get("location");
   if (!location) return response;

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { authMiddleware } from "./auth/index.js";
 import { type Config, loadConfig } from "./config/index.js";
+import { errorResponse } from "./errors.js";
 import { requestLogger } from "./logging/index.js";
 import { metricsMiddleware } from "./metrics/index.js";
 import { parseGatewayPath } from "./context.js";
@@ -33,15 +35,29 @@ async function resolveConfig(env: Record<string, string | undefined>): Promise<C
 // Hono context, and the principal, namespace and backend set downstream would
 // never reach requestLogger or metricsMiddleware above (SPEC §13, §14).
 app.use("/v1/*", async (c, next) => {
-  const path = parseGatewayPath(new URL(c.req.url).pathname);
-  if (!path) {
-    const error = { message: "malformed percent-encoding in request path", type: "BadRequestException", code: 400 };
-    return c.json({ error }, 400);
-  }
-  c.set("path", path);
   c.set("config", await resolveConfig(c.env as Record<string, string | undefined>));
+
+  // CORS ahead of everything else so a browser preflight (DuckDB-WASM) is
+  // answered 204 and never meets auth (SPEC §11). Scoped to /v1/*: /health
+  // and /ready are not browser-client surface and stay config-free.
+  const corsConfig = c.get("config").cors;
+  if (!corsConfig?.enabled) return next();
+  return cors({
+    // Hono matches an origin list by membership, so a literal "*" has to be
+    // handed over as the wildcard rather than as a one-element list.
+    origin: corsConfig.origins.includes("*") ? "*" : corsConfig.origins,
+    allowMethods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
+    allowHeaders: ["Authorization", "Content-Type", "X-Iceberg-Access-Delegation", "X-Request-Id"],
+  })(c, next);
+});
+
+app.use("/v1/*", async (c, next) => {
+  const path = parseGatewayPath(new URL(c.req.url).pathname);
+  if (!path) return errorResponse(400, "BadRequestException", "malformed percent-encoding in request path");
+  c.set("path", path);
   await next();
 });
+
 app.use("/v1/*", authMiddleware);
 app.route("/", catalogRoutes);
 
