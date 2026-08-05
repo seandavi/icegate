@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
 import type { Config } from "../config/index.js";
+import { errorResponse } from "../errors.js";
 import { resolveCatalog } from "../routing/index.js";
 
 type Permission = "read" | "write";
@@ -48,13 +49,12 @@ function classifyOperation(method: string, rest: string): Permission {
 // 0x1F; scoping is checked against its top level, so `geo` covers `geo.sub`.
 const NAMESPACE_SEPARATOR = "\u001f";
 
-// ErrorModel shape (SPEC §15), matching routing's 400/404 bodies (src/index.ts, src/routing/routes.ts).
-function unauthorized(c: Context) {
-  return c.json({ error: { message: "unauthorized", type: "NotAuthorizedException", code: 401 } }, 401);
+function unauthorized() {
+  return errorResponse(401, "NotAuthorizedException", "unauthorized");
 }
 
-function forbidden(c: Context) {
-  return c.json({ error: { message: "forbidden", type: "ForbiddenException", code: 403 } }, 403);
+function forbidden() {
+  return errorResponse(403, "ForbiddenException", "forbidden");
 }
 
 /**
@@ -80,12 +80,12 @@ export async function authMiddleware(c: Context, next: Next) {
 
   let principal: Principal;
   if (bearer !== undefined) {
-    if (!auth.api_keys?.enabled) return unauthorized(c);
+    if (!auth.api_keys?.enabled) return unauthorized();
     const matched = principalsByDigest(config).get(await sha256Hex(bearer));
-    if (!matched) return unauthorized(c);
+    if (!matched) return unauthorized();
     principal = matched;
   } else {
-    if (!auth.anonymous?.enabled) return unauthorized(c);
+    if (!auth.anonymous?.enabled) return unauthorized();
     principal = {
       name: "anonymous",
       namespaces: auth.anonymous.namespaces ?? [],
@@ -105,17 +105,17 @@ export async function authMiddleware(c: Context, next: Next) {
   }
 
   const op = classifyOperation(c.req.method, rest);
-  if (!principal.permissions.includes(op)) return forbidden(c);
+  if (!principal.permissions.includes(op)) return forbidden();
 
   if (namespace !== null) {
     const topLevel = namespace.split(NAMESPACE_SEPARATOR)[0];
-    if (!principal.namespaces.includes(topLevel)) return forbidden(c);
+    if (!principal.namespaces.includes(topLevel)) return forbidden();
   }
 
   // SPEC §12: capabilities.read/write blocks at the REST layer regardless of
   // the principal's own permissions. Unknown prefix → leave the 404 to routing.
   const catalog = resolveCatalog(config, prefix);
-  if (catalog && !catalog.capabilities[op]) return forbidden(c);
+  if (catalog && !catalog.capabilities[op]) return forbidden();
 
   await next();
 }
