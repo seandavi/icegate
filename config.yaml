@@ -1,0 +1,28 @@
+# Development config. Bundled into the Workers build by the wrangler Text rule
+# and read from disk by src/node.ts; real deployments overwrite this file at
+# build time. Deliberately free of ${VAR} references so `wrangler dev` and
+# `npm run start:node` work with an empty environment — see
+# examples/icegate.yaml for the interpolated form.
+
+server:
+  host: 0.0.0.0
+  port: 8787
+
+authentication:
+  anonymous:
+    enabled: true
+    namespaces:
+      - geo
+    permissions:
+      - read
+
+catalogs:
+  omicidx:
+    endpoint: https://catalog.example.invalid/dev-account/omicidx
+    backend_warehouse: dev-account_omicidx
+    backend_prefix: ""
+    auth:
+      bearer_token: dev-token
+    capabilities:
+      read: true
+      write: false

@@ -93,6 +93,19 @@ describe("GET /v1/config", () => {
   });
 });
 
+describe("the app's bundled config", () => {
+  it("loads config.yaml on the first gateway request and routes with it", async () => {
+    const { default: app } = await import("../src/index");
+    respond({});
+
+    const res = await app.request("/v1/config?warehouse=omicidx");
+    expect(res.status).toBe(200);
+    expect(calledWith().url).toBe(
+      "https://catalog.example.invalid/dev-account/omicidx/v1/config?warehouse=dev-account_omicidx",
+    );
+  });
+});
+
 describe("/v1/:prefix/*", () => {
   it("404s an unknown prefix without calling the backend", async () => {
     const res = await app.request("/v1/nope/namespaces");
