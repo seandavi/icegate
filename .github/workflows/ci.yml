@@ -17,3 +17,26 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  # SPEC §19 against a real catalog container and real clients. Slower and
+  # heavier than the unit job on purpose; it runs alongside, not before it.
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The runner already has docker; the harness starts, seeds and tears down
+      # the catalog container itself (it needs a host-identical warehouse mount,
+      # which a `services:` container cannot give it).
+      - name: Install uv and the DuckDB CLI
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          curl -LsSf https://install.duckdb.org | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.duckdb/cli/latest" >> "$GITHUB_PATH"
+      - run: npm run test:acceptance

@@ -10,7 +10,8 @@ const port = Number(process.env.PORT ?? 8787);
 
 // Workers gets the same file bundled as a text module; Node reads it here so
 // core never touches node:fs or process.env.
-const configPath = join(dirname(fileURLToPath(import.meta.url)), "../config.yaml");
+const configPath =
+  process.env.ICEGATE_CONFIG ?? join(dirname(fileURLToPath(import.meta.url)), "../config.yaml");
 useConfig(loadConfig(readFileSync(configPath, "utf8"), process.env));
 
 // Node-only per SPEC §14: Workers isolates are ephemeral, so in-memory metrics

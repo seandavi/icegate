@@ -8,6 +8,7 @@
     "dev": "wrangler dev",
     "start:node": "tsx src/node.ts",
     "test": "vitest run",
+    "test:acceptance": "bash tests-acceptance/run.sh",
     "typecheck": "tsc --noEmit",
     "deploy": "wrangler deploy"
   },
