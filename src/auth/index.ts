@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
 import type { Config } from "../config/index.js";
+import { resolveCatalog } from "../routing/index.js";
 
 type Permission = "read" | "write";
 export type Principal = { name: string; namespaces: string[]; permissions: Permission[] };
@@ -47,20 +48,25 @@ function classifyOperation(method: string, rest: string): Permission {
 // 0x1F; scoping is checked against its top level, so `geo` covers `geo.sub`.
 const NAMESPACE_SEPARATOR = "\u001f";
 
+// ErrorModel shape (SPEC §15), matching routing's 400/404 bodies (src/index.ts, src/routing/routes.ts).
 function unauthorized(c: Context) {
-  return c.json({ error: "unauthorized" }, 401);
+  return c.json({ error: { message: "unauthorized", type: "NotAuthorizedException", code: 401 } }, 401);
 }
 
 function forbidden(c: Context) {
-  return c.json({ error: "forbidden" }, 403);
+  return c.json({ error: { message: "forbidden", type: "ForbiddenException", code: 403 } }, 403);
 }
 
 /**
- * Authentication + authorization middleware (SPEC §7-9). Bearer token →
+ * Authentication + authorization middleware (SPEC §7-9, §12). Bearer token →
  * SHA-256 → principal lookup; no header → anonymous if enabled; unmatched
- * bearer never falls through to anonymous. Namespace-scoped paths
- * additionally require the principal's namespaces/permissions to cover the
- * request; paths without a namespace need only authentication.
+ * bearer never falls through to anonymous.
+ *
+ * `/v1/config` is the one reserved, catalog-less endpoint (SPEC §10) — it
+ * gets authentication only. Every other `/v1/<prefix>/*` request is
+ * classified read/write (SPEC §9) and checked against the principal's
+ * permissions and, additionally, the catalog's `capabilities` (SPEC §12);
+ * namespace scoping applies only when the path carries a namespace.
  *
  * Mounted on `/v1/*` only, so the health endpoints (SPEC §16) bypass it by
  * construction. auth_failures_total is incremented by the metrics middleware,
@@ -89,16 +95,27 @@ export async function authMiddleware(c: Context, next: Next) {
 
   c.set("principal", principal.name);
 
-  const { rest, namespace } = c.get("path");
+  const { prefix, rest, namespace } = c.get("path");
   c.set("namespace", namespace);
 
-  if (namespace !== null) {
-    const op = classifyOperation(c.req.method, rest);
-    const topLevel = namespace.split(NAMESPACE_SEPARATOR)[0];
-    if (!principal.namespaces.includes(topLevel) || !principal.permissions.includes(op)) {
-      return forbidden(c);
-    }
+  // SPEC §10: `config` is the reserved endpoint name, never a real catalog prefix.
+  if (prefix === "config") {
+    await next();
+    return;
   }
+
+  const op = classifyOperation(c.req.method, rest);
+  if (!principal.permissions.includes(op)) return forbidden(c);
+
+  if (namespace !== null) {
+    const topLevel = namespace.split(NAMESPACE_SEPARATOR)[0];
+    if (!principal.namespaces.includes(topLevel)) return forbidden(c);
+  }
+
+  // SPEC §12: capabilities.read/write blocks at the REST layer regardless of
+  // the principal's own permissions. Unknown prefix → leave the 404 to routing.
+  const catalog = resolveCatalog(config, prefix);
+  if (catalog && !catalog.capabilities[op]) return forbidden(c);
 
   await next();
 }
