@@ -227,6 +227,19 @@ Future
 
 Authentication MUST be pluggable by configuration, but not by code plugins.
 
+## API keys
+
+* Format: `icegate_` + 32 characters of base62 randomness.
+* Presented as `Authorization: Bearer <key>` — every Iceberg client
+  already supports setting a static bearer token; no custom header.
+* Config stores only SHA-256 hex digests, keyed by principal name
+  (Section 9), so the YAML is committable. Plaintext exists only at
+  issuance.
+* Authentication: hash the presented bearer value, compare against
+  configured digests. No match → 401.
+* The client-facing bearer value is never forwarded; the gateway
+  attaches the backend catalog's own credentials (Section 6).
+
 ---
 
 # 9. Authorization
@@ -241,17 +254,21 @@ Permissions
 Example
 
 ```yaml
-api_key:
+api_keys:
 
-  namespaces:
+  alice:
 
-    - geo
+    sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
 
-    - tcga
+    namespaces:
 
-  permissions:
+      - geo
 
-    - read
+      - tcga
+
+    permissions:
+
+      - read
 
 anonymous:
 
