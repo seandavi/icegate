@@ -158,11 +158,17 @@ catalogs:
 
   omicidx:
 
-    endpoint: https://...
+    # Base URI including any path the backend serves under.
+    # R2 Data Catalog: https://catalog.cloudflarestorage.com/<account_id>/<bucket>
+    endpoint: https://catalog.cloudflarestorage.com/${CF_ACCOUNT_ID}/omicidx
 
-    # Prefix the backend expects in its own paths,
-    # e.g. <account_id>/<bucket> for R2 Data Catalog.
-    backend_prefix: ${CF_ACCOUNT_ID}/omicidx
+    # Warehouse value the backend expects on GET /v1/config.
+    # R2 Data Catalog: <account_id>_<bucket>
+    backend_warehouse: ${CF_ACCOUNT_ID}_omicidx
+
+    # Iceberg prefix the backend expects after /v1/ (single path
+    # segment, no slashes). Empty for R2 Data Catalog.
+    backend_prefix: ""
 
     auth:
       bearer_token: ${CF_API_TOKEN}
@@ -304,8 +310,15 @@ Routing uses the mechanism built into the Iceberg REST protocol: the
 2. The client places that prefix in every subsequent path:
    `/v1/<name>/namespaces/...`. The gateway resolves the backend with a
    dictionary lookup on the first path segment after `/v1/`.
-3. The gateway rewrites the public prefix to the backend's own
-   `backend_prefix` before forwarding.
+3. The gateway strips the public prefix from the path and forwards to
+   `<endpoint><backend_prefix?>/v1/<rest>`. The backend's base URI may
+   itself contain path segments, which precede `/v1` — R2 Data Catalog
+   serves at
+   `https://catalog.cloudflarestorage.com/<account_id>/<bucket>/v1/...`.
+   `backend_prefix`, when non-empty, is inserted after `/v1/` per the
+   Iceberg REST prefix convention. Public prefixes MUST be a single
+   path segment: some clients (DuckDB) split a prefix on `/` into
+   components.
 
 Namespaces play no role in routing; they are used only for
 authorization (Section 9). Because every request identifies exactly one
@@ -320,9 +333,18 @@ No regex. No first-match-wins rules.
 
 Only the following transformations are permitted.
 
-* Request paths: public prefix → `backend_prefix` (Section 10)
-* `/v1/config` responses: set `overrides.prefix`, rewrite the catalog
-  `uri` to the gateway's public endpoint
+* Request paths: public prefix stripped, joined to the backend base
+  URI (Section 10); forwarded requests carry the backend host's `Host`
+  header (backends reject a foreign Host)
+* `/v1/config` requests: rewrite `?warehouse=<name>` to the catalog's
+  configured `backend_warehouse`
+* `/v1/config` responses: set `overrides.prefix` to the public prefix;
+  set `overrides.uri` to the gateway's public endpoint and DELETE any
+  `defaults.uri`. Both are required: PyIceberg merges defaults and
+  overrides and re-reads `uri` from the result, and DuckDB reads
+  `overrides.uri` — a backend-supplied `uri` in either map causes
+  clients to abandon the gateway and address the backend directly.
+  Any `endpoints` list MUST be forwarded unchanged.
 * Location headers: backend prefix → public prefix
 
 All other payloads MUST be forwarded unchanged. In particular, storage
@@ -349,9 +371,12 @@ backend catalog already implements:
    client) and Trino do **not** — the operator must configure it:
    Spark via the catalog property
    `header.X-Iceberg-Access-Delegation=vended-credentials`, Trino via
-   `iceberg.rest-catalog.vended-credentials-enabled=true`. The gateway
-   cannot force clients to request vended credentials; it only forwards
-   the header and the resulting credentials unchanged.
+   `iceberg.rest-catalog.vended-credentials-enabled=true` (note:
+   Cloudflare's documented Trino setup instead uses static R2 S3 keys,
+   so Trino users of an anonymous catalog must supply their own
+   object-storage credentials). The gateway cannot force clients to
+   request vended credentials; it only forwards the header and the
+   resulting credentials unchanged.
 2. The gateway MUST forward this header unchanged.
 3. The backend returns temporary, table-scoped storage credentials in
    the `loadTable` response; the gateway MUST forward them unchanged.
@@ -361,11 +386,20 @@ backend catalog already implements:
 "Public" data is therefore anonymous *catalog* access plus vended
 credentials — no URL rewriting.
 
-Operational requirement: a catalog exposed to anonymous users SHOULD be
-configured with a **read-only** backend token. Vended credentials
-inherit the scope of the gateway's token; `capabilities.write: false`
-blocks commits at the REST layer, but a read-write token could still
-vend writable storage credentials.
+Operational requirement: a catalog exposed to anonymous users MUST be
+configured with a backend token that is read-only on BOTH the catalog
+and the object store. For R2 Data Catalog that means `Workers R2 Data
+Catalog Read` AND `Workers R2 Storage Read` (dashboard: "Admin Read
+only"). Catalog-read-only with storage-read-write is NOT sufficient:
+vended credentials inherit the token's storage permissions, so such a
+token can still write objects — including catalog metadata files —
+directly to the bucket. `capabilities.write: false` blocks commits at
+the REST layer only.
+
+Blast radius: R2's catalog permission groups are account-scoped and
+cannot be restricted to a single bucket. A token configured for one
+warehouse can read every R2 Data Catalog in that Cloudflare account.
+Isolate exposure boundaries by Cloudflare account.
 
 ---
 
