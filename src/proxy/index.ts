@@ -52,15 +52,24 @@ export async function forward(request: Request, url: string, catalog: Catalog): 
     return errorResponse(502, "BadGatewayException", `backend catalog "${catalog.name}" ${cause}`);
   }
 
+  const encoded = response.headers.has("content-encoding");
   const location = response.headers.get("location");
-  if (!location) return response;
+  const rewritten = location ? rewriteLocation(location, catalog, new URL(request.url).origin) : null;
+  if (!encoded && rewritten === location) return response;
 
-  const rewritten = rewriteLocation(location, catalog, new URL(request.url).origin);
-  if (rewritten === location) return response;
+  const outHeaders = new Headers(response.headers);
+  // fetch() decompresses the body but leaves the headers describing the
+  // compressed bytes: a client that trusts Content-Encoding then fails to
+  // gunzip plaintext. Content-Length is stale for the same reason. (Found by
+  // the acceptance suite — PyIceberg and node's fetch send Accept-Encoding,
+  // curl does not, so only real clients hit it.)
+  if (encoded) {
+    outHeaders.delete("content-encoding");
+    outHeaders.delete("content-length");
+  }
+  if (rewritten !== null) outHeaders.set("Location", rewritten);
 
-  const out = new Response(response.body, response);
-  out.headers.set("Location", rewritten);
-  return out;
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers: outHeaders });
 }
 
 // ponytail: absolute and backend-relative Locations only. A root-relative

@@ -98,6 +98,32 @@ describe("GET /v1/config transparency", () => {
   });
 });
 
+// fetch() hands back a decoded body with the backend's Content-Encoding still
+// attached; forwarding that pair makes every gzip-capable client (PyIceberg,
+// node fetch) fail to decompress plaintext.
+describe("content encoding", () => {
+  it("drops Content-Encoding and Content-Length from a decoded response", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json({ namespaces: [] }, { headers: { "Content-Encoding": "gzip", "Content-Length": "999" } }),
+    );
+
+    const res = await app.request("/v1/omicidx/namespaces");
+
+    expect(res.headers.get("Content-Encoding")).toBeNull();
+    expect(res.headers.get("Content-Length")).toBeNull();
+    expect(await res.json()).toEqual({ namespaces: [] });
+  });
+
+  it("leaves an uncompressed response alone", async () => {
+    fetchMock.mockResolvedValue(Response.json({ namespaces: [] }, { headers: { "X-Backend-Trace": "abc" } }));
+
+    const res = await app.request("/v1/omicidx/namespaces");
+
+    expect(res.headers.get("X-Backend-Trace")).toBe("abc");
+    expect(await res.json()).toEqual({ namespaces: [] });
+  });
+});
+
 // SPEC §12: the gateway only carries the delegation header and the credentials
 // that come back — it never touches either.
 it("round-trips vended credentials untouched", async () => {
