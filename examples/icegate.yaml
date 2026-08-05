@@ -1,0 +1,54 @@
+server:
+  # Node.js target only; ignored on Cloudflare Workers,
+  # where the platform owns the listener.
+  host: 0.0.0.0
+  port: 8787
+
+cors:
+  enabled: true
+  origins:
+    - "*"
+
+authentication:
+
+  anonymous:
+    enabled: true
+    namespaces:
+      - geo
+    permissions:
+      - read
+
+  api_keys:
+    enabled: true
+
+    alice:
+      sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+      namespaces:
+        - geo
+        - tcga
+      permissions:
+        - read
+
+catalogs:
+
+  omicidx:
+
+    # Base URI including any path the backend serves under.
+    # R2 Data Catalog: https://catalog.cloudflarestorage.com/<account_id>/<bucket>
+    endpoint: https://catalog.cloudflarestorage.com/${CF_ACCOUNT_ID}/omicidx
+
+    # Warehouse value the backend expects on GET /v1/config.
+    # R2 Data Catalog: <account_id>_<bucket>
+    backend_warehouse: ${CF_ACCOUNT_ID}_omicidx
+
+    # Iceberg prefix the backend expects after /v1/ (single path
+    # segment, no slashes). Empty for R2 Data Catalog.
+    backend_prefix: ""
+
+    auth:
+      bearer_token: ${CF_API_TOKEN}
+
+    capabilities:
+
+      read: true
+      write: false
