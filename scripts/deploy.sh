@@ -10,10 +10,10 @@ cd "$(dirname "$0")/.."
 step() { echo "==> $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-step "Resolving account id"
+step "Resolving account id (cdsci-r2-account-id secret; CF_ACCOUNT_ID env overrides)"
 if [ -z "${CF_ACCOUNT_ID:-}" ]; then
-  CF_ACCOUNT_ID=$(grep -A3 '^\[r2\]' ~/.config/rclone/rclone.conf 2>/dev/null | grep -oE '[0-9a-f]{32}' | head -1) \
-    || die "no CF_ACCOUNT_ID env var and no [r2] remote in ~/.config/rclone/rclone.conf — set CF_ACCOUNT_ID and rerun"
+  CF_ACCOUNT_ID=$(gcloud secrets versions access latest --secret cdsci-r2-account-id --project cdsci-infra) \
+    || die "could not fetch cdsci-r2-account-id — set CF_ACCOUNT_ID and rerun"
 fi
 echo "    account: ${CF_ACCOUNT_ID:0:6}…"
 
