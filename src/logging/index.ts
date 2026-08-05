@@ -1,9 +1,10 @@
 import type { Context, Next } from "hono";
 
 /**
- * Emits one structured JSON line per request to console.log.
- * Auth/routing land in later tickets; principal, namespace, and backend
- * are read from context vars and log as null until those middlewares set them.
+ * Emits one structured JSON line per request to console.log (SPEC §13).
+ * principal, namespace and backend come from the shared request context
+ * (src/context.ts); they log as null on routes outside the `/v1/*` chain that
+ * sets them, i.e. the health endpoints.
  */
 export async function requestLogger(c: Context, next: Next) {
   const requestId = c.req.header("x-request-id") ?? crypto.randomUUID();

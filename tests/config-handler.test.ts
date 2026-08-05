@@ -1,3 +1,4 @@
+import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "../src/config";
 import { catalogRoutes } from "../src/routing/routes";
@@ -22,7 +23,14 @@ const config = {
   },
 } satisfies Config;
 
-const app = catalogRoutes(config);
+// Routing in isolation — the composed app (auth included) is exercised in
+// tests/app.test.ts; here only the context the routes read is supplied.
+const app = new Hono();
+app.use("*", (c, next) => {
+  c.set("config", config);
+  return next();
+});
+app.route("/", catalogRoutes);
 
 let fetchMock: ReturnType<typeof vi.fn>;
 

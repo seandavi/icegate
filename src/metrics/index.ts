@@ -34,7 +34,7 @@ export async function metricsMiddleware(c: Context, next: Next) {
     inc(requestsTotal, `${c.req.method}|${status}`);
     if (status === 401 || status === 403) authFailuresTotal++;
 
-    const backend = c.get("backend") as string | null | undefined;
+    const backend = c.get("backend");
     if (backend && status >= 500) inc(backendErrorsTotal, backend);
   }
 }
