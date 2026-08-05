@@ -1,0 +1,32 @@
+# Production config for the deployed Workers instance.
+# All ${VARS} resolve from Workers secrets set by scripts/deploy.sh —
+# no real infrastructure identifiers are committed here.
+
+cors:
+  enabled: true
+  origins:
+    - "*"
+
+authentication:
+  anonymous:
+    enabled: false
+  api_keys:
+    enabled: true
+    seandavi:
+      sha256: 1e6751fadc838f41ca4db0eee30221ac81fd10b531473f0ac4bd2dabeefaf054
+      namespaces:
+        - public
+      permissions:
+        - read
+        - write
+
+catalogs:
+  omicidx:
+    endpoint: https://catalog.cloudflarestorage.com/${CF_ACCOUNT_ID}/${R2_BUCKET}
+    backend_warehouse: ${CF_ACCOUNT_ID}_${R2_BUCKET}
+    backend_prefix: ${R2_CATALOG_PREFIX}
+    auth:
+      bearer_token: ${CF_API_TOKEN}
+    capabilities:
+      read: true
+      write: true

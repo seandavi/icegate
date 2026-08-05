@@ -167,8 +167,10 @@ catalogs:
     backend_warehouse: ${CF_ACCOUNT_ID}_omicidx
 
     # Iceberg prefix the backend expects after /v1/ (single path
-    # segment, no slashes). Empty for R2 Data Catalog.
-    backend_prefix: ""
+    # segment, no slashes). R2 Data Catalog returns a stable per-catalog
+    # UUID as `overrides.prefix` in its /v1/config response — discover it
+    # once with an authenticated GET and set it here.
+    backend_prefix: ${R2_CATALOG_PREFIX}
 
     auth:
       bearer_token: ${CF_API_TOKEN}
@@ -394,6 +396,12 @@ backend catalog already implements:
 
 "Public" data is therefore anonymous *catalog* access plus vended
 credentials — no URL rewriting.
+
+Remote signing is NOT supported through the gateway: R2's config
+response carries an absolute `s3.signer.uri` on the backend host, and
+signing requests there require backend credentials the client does not
+hold. Clients behind the gateway use vended credentials (Cloudflare's
+own client recipes set `s3.remote-signing-enabled=false`).
 
 Operational requirement: a catalog exposed to anonymous users MUST be
 configured with a backend token that is read-only on BOTH the catalog
