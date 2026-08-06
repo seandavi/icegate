@@ -156,6 +156,29 @@ research findings live on the
 [issues](https://github.com/seandavi/icegate/issues?q=label%3Awayfinder%3Amap);
 security reports: [SECURITY.md](SECURITY.md).
 
+## How this was built
+
+icegate was built as a human–AI collaboration: [Sean Davis](https://seandavi.github.io/)
+set the destination and made the judgment calls; [Claude Code](https://claude.com/claude-code)
+did the research, implementation, testing, and documentation.
+
+The workflow is structured by [Matt Pocock](https://www.aihero.dev/)'s
+engineering skills for Claude Code, which turn a vague goal into an
+issue-tracked expedition: a **wayfinder** map charts the destination as a
+GitHub issue with tickets as sub-issues; **grilling** tickets force decisions
+(stack, key format, license) through the human before code gets written;
+**research** tickets run autonomously and land their findings as citations on
+the issue. The convention that makes it work is *the issues are the docs* —
+every decision, dead end, and verification result is public in the tracker,
+not buried in a chat log. The whole history is readable:
+[map #1](https://github.com/seandavi/icegate/issues/1) built the gateway
+(spec → research → implementation → acceptance tests → live deployment);
+[map #24](https://github.com/seandavi/icegate/issues/24) made it an open
+source project. [SPEC.md](SPEC.md) stayed the single source of truth
+throughout — when reality disagreed with it, the spec was corrected in the
+same commit, and the acceptance suite (real PyIceberg and DuckDB against a
+real catalog) kept the claims honest.
+
 ## License
 
 [Apache-2.0](LICENSE) © icegate contributors. If icegate is useful in your
