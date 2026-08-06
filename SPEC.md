@@ -197,9 +197,13 @@ are **no plugins** — the chain is compiled into the application.
 ```text
 Request
    │
-Authentication
+Logging & metrics (wrap the whole chain)
    │
-Authorization
+CORS (before auth — §11 browser preflights carry no Authorization)
+   │
+Path parse (once, from the raw pathname)
+   │
+Authentication + Authorization (one middleware)
    │
 Routing
    │
@@ -208,8 +212,6 @@ Request rewrite (rare)
 Backend transport
    │
 Response rewrite (rare)
-   │
-Logging & metrics
    │
 Response
 ```
@@ -650,8 +652,6 @@ src/
     routing/
 
     proxy/
-
-    transform/
 
     metrics/
 
