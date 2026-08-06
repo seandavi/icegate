@@ -136,8 +136,9 @@ Example:
 
 ```yaml
 server:
-  # Node.js target only; ignored on Cloudflare Workers,
-  # where the platform owns the listener.
+  # Accepted and validated but currently unread on every target:
+  # Workers owns its own listener, and the Node entry binds from the
+  # PORT environment variable (default 8787). Known v1 gap (#13/#20).
   host: 0.0.0.0
   port: 8787
 
@@ -299,6 +300,11 @@ gateway decodes that segment exactly once and scopes authorization on
 its **top-level** namespace, so a principal granted `geo` also reaches
 `geo.sub`; the segment is forwarded to the backend still encoded. A
 segment carrying malformed percent-encoding is a 400 (Section 15).
+
+Paths that carry no namespace segment (`GET /v1/<prefix>/namespaces`,
+`/v1/config`) have no namespace to scope: listing namespaces is NOT
+filtered by grant. Namespace *names* are visible to any principal with
+read access to the catalog; grants gate descent, not discovery.
 
 ## Read vs write classification
 
@@ -482,7 +488,7 @@ Gateway-generated errors
 
 502
 
-503
+503 (reserved for gateway unavailability; no code path emits it in v1)
 
 ---
 

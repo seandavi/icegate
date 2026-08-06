@@ -42,8 +42,10 @@ catalogs:
     backend_warehouse: ${CF_ACCOUNT_ID}_omicidx
 
     # Iceberg prefix the backend expects after /v1/ (single path
-    # segment, no slashes). Empty for R2 Data Catalog.
-    backend_prefix: ""
+    # segment, no slashes). R2 Data Catalog: a stable per-catalog UUID —
+    # discover it from the backend's own /v1/config overrides.prefix
+    # (see docs/operators.md §6). Omit or "" if the backend has none.
+    backend_prefix: ${R2_CATALOG_PREFIX}
 
     auth:
       bearer_token: ${CF_API_TOKEN}
