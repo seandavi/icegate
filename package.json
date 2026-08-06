@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "description": "A stateless edge gateway for Apache Iceberg REST Catalogs",
   "type": "module",
+  "license": "Apache-2.0",
+  "repository": "github:seandavi/icegate",
   "private": true,
   "scripts": {
     "dev": "wrangler dev",

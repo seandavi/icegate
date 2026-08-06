@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use icegate in your work, please cite it as below."
+title: "icegate: a stateless edge gateway for Apache Iceberg REST Catalogs"
+type: software
+authors:
+  - family-names: Davis
+    given-names: Sean
+    orcid: "https://orcid.org/0000-0002-8991-6458"
+repository-code: "https://github.com/seandavi/icegate"
+license: Apache-2.0
+keywords:
+  - apache-iceberg
+  - rest-catalog
+  - gateway
+  - cloudflare-workers
+  - data-lake
