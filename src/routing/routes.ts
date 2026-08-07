@@ -60,7 +60,7 @@ function notFound(message: string) {
 /** Records the resolved backend (SPEC §13/§14) and forwards. */
 function proxy(c: Context, catalog: Catalog, url: string): Promise<Response> {
   c.set("backend", catalog.name);
-  return forward(c.req.raw, url, catalog);
+  return forward(c.req.raw, url, catalog, c.get("canWrite") ?? false);
 }
 
 /**

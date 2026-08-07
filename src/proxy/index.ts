@@ -21,7 +21,10 @@ const HOP_BY_HOP = [
 ];
 
 /**
- * Forwards a client request to `url` with the catalog's own credentials.
+ * Forwards a client request to `url` with the catalog's own credentials:
+ * `bearer_token_write` when the principal holds `write` and the catalog
+ * configures one, `bearer_token` otherwise — so the read token is the
+ * default a bug falls back to, not the write token (SPEC §12, issue #34).
  * The client-facing bearer value is never passed through (SPEC §8); every
  * other header, notably `X-Iceberg-Access-Delegation`, goes untouched, and so
  * does the backend's response — status included (SPEC §11, §15).
@@ -30,10 +33,11 @@ const HOP_BY_HOP = [
  * SPEC §19 names 502 for the backend-failure case, and all three are the same
  * failure to a client. 503 stays reserved for the gateway's own unavailability.
  */
-export async function forward(request: Request, url: string, catalog: Catalog): Promise<Response> {
+export async function forward(request: Request, url: string, catalog: Catalog, canWrite = false): Promise<Response> {
   const headers = new Headers(request.headers);
   for (const name of HOP_BY_HOP) headers.delete(name);
-  headers.set("Authorization", `Bearer ${catalog.auth.bearer_token}`);
+  const token = canWrite ? (catalog.auth.bearer_token_write ?? catalog.auth.bearer_token) : catalog.auth.bearer_token;
+  headers.set("Authorization", `Bearer ${token}`);
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   let response: Response;

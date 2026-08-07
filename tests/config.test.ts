@@ -134,6 +134,12 @@ catalogs: {}
     expect(() => loadConfig(yaml, env)).toThrow(/at least one catalog/);
   });
 
+  it("accepts an optional bearer_token_write", () => {
+    const yaml = exampleYaml.replace("bearer_token: \${CF_API_TOKEN}", "bearer_token: ro\n      bearer_token_write: rw");
+    const config = loadConfig(yaml, env);
+    expect(config.catalogs.omicidx.auth).toEqual({ bearer_token: "ro", bearer_token_write: "rw" });
+  });
+
   it("accepts anonymous and api_keys authorization scoping shapes", () => {
     const config = loadConfig(exampleYaml, env);
     expect(config.authentication.anonymous?.namespaces).toEqual(["geo"]);

@@ -174,7 +174,11 @@ catalogs:
     backend_prefix: ${R2_CATALOG_PREFIX}
 
     auth:
-      bearer_token: ${CF_API_TOKEN}
+      # Default backend token, used for every request unless overridden below.
+      bearer_token: ${CF_API_TOKEN_RO}
+      # Optional. Sent instead of bearer_token when the authenticated
+      # principal holds `write` (Section 12). Omit for a single-token setup.
+      bearer_token_write: ${CF_API_TOKEN_RW}
 
     capabilities:
 
@@ -411,20 +415,35 @@ signing requests there require backend credentials the client does not
 hold. Clients behind the gateway use vended credentials (Cloudflare's
 own client recipes set `s3.remote-signing-enabled=false`).
 
-Operational requirement: a catalog exposed to anonymous users MUST be
-configured with a backend token that is read-only on BOTH the catalog
-and the object store. For R2 Data Catalog that means `Workers R2 Data
-Catalog Read` AND `Workers R2 Storage Read` (dashboard: "Admin Read
-only"). Catalog-read-only with storage-read-write is NOT sufficient:
-vended credentials inherit the token's storage permissions, so such a
-token can still write objects — including catalog metadata files —
-directly to the bucket. `capabilities.write: false` blocks commits at
-the REST layer only.
+Backend token selection: a catalog MAY configure a second backend
+token, `auth.bearer_token_write`, sent upstream only when the
+authenticated principal holds `write`; every other request — anonymous
+included, and any code path that never resolves a grant — uses
+`auth.bearer_token`. Read-only is the fallback, never the write token:
+a bug must actively select the write token to leak write access.
+Selection is per **principal**, not per operation, because vended
+credentials come back on *read* endpoints (`loadTable`) and a write
+principal needs write-capable storage credentials there. With the
+split configured, a principal's `write` grant is structural rather
+than advisory: read principals get upstream 403s on commit AND
+read-only vended storage credentials.
 
-Blast radius: R2's catalog permission groups are account-scoped and
-cannot be restricted to a single bucket. A token configured for one
-warehouse can read every R2 Data Catalog in that Cloudflare account.
-Isolate exposure boundaries by Cloudflare account.
+Operational requirement: a catalog exposed to anonymous users MUST
+configure `bearer_token` as a token that is read-only on BOTH the
+catalog and the object store. Catalog-read-only with
+storage-read-write is NOT sufficient: vended credentials inherit the
+token's storage permissions, so such a token can still write objects —
+including catalog metadata files — directly to the bucket.
+`capabilities.write: false` blocks commits at the REST layer only.
+
+Blast radius: R2's *catalog* permission groups are account-scoped — a
+token's catalog half reaches every R2 Data Catalog in the Cloudflare
+account. Its *storage* half CAN be scoped to one bucket, but only via
+the token API (`Workers R2 Storage Bucket Item Read`/`Write` against a
+single bucket resource — the dashboard R2 presets are account-wide on
+both halves; see `scripts/create-backend-tokens.sh`). A bucket-scoped
+token vends credentials that cannot reach any other bucket. Catalog
+metadata isolation still requires separate Cloudflare accounts.
 
 ---
 

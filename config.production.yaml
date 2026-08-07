@@ -25,8 +25,12 @@ catalogs:
     endpoint: https://catalog.cloudflarestorage.com/${CF_ACCOUNT_ID}/${R2_BUCKET}
     backend_warehouse: ${CF_ACCOUNT_ID}_${R2_BUCKET}
     backend_prefix: ${R2_CATALOG_PREFIX}
+    # Two bucket-scoped backend tokens (issue #34, scripts/create-backend-tokens.sh):
+    # read-only is the default every request falls back to; the write token is
+    # selected only for principals granted `write`.
     auth:
-      bearer_token: ${CF_API_TOKEN}
+      bearer_token: ${CF_API_TOKEN_RO}
+      bearer_token_write: ${CF_API_TOKEN_RW}
     capabilities:
       read: true
       write: true

@@ -20,9 +20,12 @@ echo "    account: ${CF_ACCOUNT_ID:0:6}…"
 R2_BUCKET=${R2_BUCKET:-omicidx-r2cat-test}
 echo "    bucket:  $R2_BUCKET"
 
-step "Fetching Cloudflare API token from Secrets Manager (cdsci-infra)"
-CF_API_TOKEN=$(gcloud secrets versions access latest --secret cdsci-cloudflare-api-token --project cdsci-infra) \
-  || die "gcloud failed — are you authenticated (gcloud auth login) with access to cdsci-infra?"
+step "Fetching backend catalog tokens (RO/RW) from Secrets Manager (cdsci-infra)"
+# Bucket-scoped token pair (issue #34) — mint with scripts/create-backend-tokens.sh.
+CF_API_TOKEN_RO=${CF_API_TOKEN_RO:-$(gcloud secrets versions access latest --secret cdsci-cloudflare-api-token-ro --project cdsci-infra)} \
+  || die "could not fetch cdsci-cloudflare-api-token-ro — mint it with scripts/create-backend-tokens.sh and store it, or set CF_API_TOKEN_RO"
+CF_API_TOKEN_RW=${CF_API_TOKEN_RW:-$(gcloud secrets versions access latest --secret cdsci-cloudflare-api-token-rw --project cdsci-infra)} \
+  || die "could not fetch cdsci-cloudflare-api-token-rw — mint it with scripts/create-backend-tokens.sh and store it, or set CF_API_TOKEN_RW"
 
 step "Fetching Workers deploy token"
 export CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-$(gcloud secrets versions access latest --secret cdsci-cloudflare-workers-token --project cdsci-infra)} \
@@ -30,7 +33,7 @@ export CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-$(gcloud secrets versions ac
 export CLOUDFLARE_ACCOUNT_ID=$CF_ACCOUNT_ID
 
 step "Discovering catalog UUID prefix from R2 /v1/config (see issue #2)"
-R2_CATALOG_PREFIX=$(curl -sf -H "Authorization: Bearer $CF_API_TOKEN" \
+R2_CATALOG_PREFIX=$(curl -sf -H "Authorization: Bearer $CF_API_TOKEN_RO" \
   "https://catalog.cloudflarestorage.com/$CF_ACCOUNT_ID/$R2_BUCKET/v1/config?warehouse=${CF_ACCOUNT_ID}_${R2_BUCKET}" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["overrides"]["prefix"])') \
   || die "could not read the catalog's /v1/config — is the R2 Data Catalog enabled on $R2_BUCKET and the token valid?"
@@ -47,8 +50,8 @@ trap 'mv config.dev.yaml.bak config.yaml' EXIT
 step "wrangler deploy"
 npx wrangler deploy
 
-step "Pushing Workers secrets (CF_ACCOUNT_ID R2_BUCKET CF_API_TOKEN R2_CATALOG_PREFIX)"
-for s in CF_ACCOUNT_ID R2_BUCKET CF_API_TOKEN R2_CATALOG_PREFIX; do
+step "Pushing Workers secrets (CF_ACCOUNT_ID R2_BUCKET CF_API_TOKEN_RO CF_API_TOKEN_RW R2_CATALOG_PREFIX)"
+for s in CF_ACCOUNT_ID R2_BUCKET CF_API_TOKEN_RO CF_API_TOKEN_RW R2_CATALOG_PREFIX; do
   printf '%s' "${!s}" | npx wrangler secret put "$s" >/dev/null
   echo "    $s ✓"
 done

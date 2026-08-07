@@ -53,6 +53,8 @@ declare module "hono" {
     path: GatewayPath;
     /** Authenticated principal name (SPEC §8). */
     principal: string;
+    /** Principal holds `write` — selects the catalog's write backend token (SPEC §12). */
+    canWrite: boolean;
     /** Namespace the request is scoped to, or null when the path has none (SPEC §9). */
     namespace: string | null;
     /** Public catalog name the request resolved to (SPEC §10). */

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sha256Hex } from "../src/auth/index.js";
 import { loadConfig } from "../src/config/index.js";
 import app, { useConfig } from "../src/index.js";
 
@@ -139,6 +140,88 @@ it("round-trips vended credentials untouched", async () => {
 
   expect(new Headers(lastInit().headers).get("X-Iceberg-Access-Delegation")).toBe("vended-credentials");
   expect(await res.json()).toEqual(loadTable);
+});
+
+// SPEC §12 / issue #34: the backend token is selected by the principal's
+// grant — write principals get bearer_token_write, everyone else (anonymous
+// included) the read-only bearer_token, which is also the fallback when no
+// write token is configured.
+describe("backend token selection", () => {
+  async function keyedConfig(writeToken = "      bearer_token_write: rw-token\n") {
+    return loadConfig(
+      `
+authentication:
+  anonymous:
+    enabled: true
+    namespaces: [geo]
+    permissions: [read]
+  api_keys:
+    enabled: true
+    reader:
+      sha256: ${await sha256Hex("icegate_reader")}
+      namespaces: [geo]
+      permissions: [read]
+    writer:
+      sha256: ${await sha256Hex("icegate_writer")}
+      namespaces: [geo]
+      permissions: [read, write]
+catalogs:
+  omicidx:
+    endpoint: https://catalog.example.com/acct/omicidx
+    backend_warehouse: acct_omicidx
+    backend_prefix: ""
+    auth:
+      bearer_token: ro-token
+${writeToken}    capabilities:
+      read: true
+      write: true
+`,
+      {},
+    );
+  }
+
+  function sentAuthorization(): string | null {
+    return new Headers(lastInit().headers).get("Authorization");
+  }
+
+  beforeEach(() => {
+    fetchMock.mockResolvedValue(Response.json({}));
+  });
+
+  it("sends the write token for a principal granted write", async () => {
+    useConfig(await keyedConfig());
+    await app.request("/v1/omicidx/namespaces/geo/tables/t", {
+      headers: { Authorization: "Bearer icegate_writer" },
+    });
+    expect(sentAuthorization()).toBe("Bearer rw-token");
+  });
+
+  it("sends the read token for a read-only key and for anonymous", async () => {
+    useConfig(await keyedConfig());
+    await app.request("/v1/omicidx/namespaces/geo/tables/t", {
+      headers: { Authorization: "Bearer icegate_reader" },
+    });
+    expect(sentAuthorization()).toBe("Bearer ro-token");
+
+    await app.request("/v1/omicidx/namespaces/geo/tables/t");
+    expect(sentAuthorization()).toBe("Bearer ro-token");
+  });
+
+  it("selects per principal on /v1/config too", async () => {
+    useConfig(await keyedConfig());
+    await app.request("/v1/config?warehouse=omicidx", {
+      headers: { Authorization: "Bearer icegate_writer" },
+    });
+    expect(sentAuthorization()).toBe("Bearer rw-token");
+  });
+
+  it("falls back to bearer_token when no write token is configured", async () => {
+    useConfig(await keyedConfig(""));
+    await app.request("/v1/omicidx/namespaces/geo/tables/t", {
+      headers: { Authorization: "Bearer icegate_writer" },
+    });
+    expect(sentAuthorization()).toBe("Bearer ro-token");
+  });
 });
 
 // SPEC §11: browser clients (DuckDB-WASM) need preflight answered before auth.

@@ -94,6 +94,9 @@ export async function authMiddleware(c: Context, next: Next) {
   }
 
   c.set("principal", principal.name);
+  // Backend token selection (SPEC §12): only an explicit `write` grant picks
+  // the write token — anonymous and unknown shapes default to read-only.
+  c.set("canWrite", principal.permissions.includes("write"));
 
   const { prefix, rest, namespace } = c.get("path");
   c.set("namespace", namespace);

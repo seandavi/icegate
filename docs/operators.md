@@ -163,7 +163,8 @@ A map of *public prefix* → backend. The key is what clients pass as
 | `endpoint` | string, non-empty | yes | Full backend base URI **including any path segments it serves under**. `/v1` is appended by the gateway. Trailing slashes are stripped. |
 | `backend_warehouse` | string, non-empty | yes | What the gateway substitutes for `?warehouse=` when forwarding `/v1/config` |
 | `backend_prefix` | string, no `/` | no | The Iceberg prefix the backend wants after `/v1/`. Inserted into every forwarded path **except** `/v1/config`, which is prefix-less by protocol. Omit or `""` if the backend has none. |
-| `auth.bearer_token` | string, non-empty | yes | Sent to the backend as `Authorization: Bearer`. The only key allowed under `auth`. |
+| `auth.bearer_token` | string, non-empty | yes | Sent to the backend as `Authorization: Bearer`. The default for every request — anonymous, read keys, and any path that never resolves a principal. |
+| `auth.bearer_token_write` | string, non-empty | no | Sent instead of `bearer_token` when the authenticated principal holds `write`. Omit to use one token for everything. See section 6 for why you want the split. |
 | `capabilities.read` | boolean | yes | |
 | `capabilities.write` | boolean | yes | |
 
@@ -242,7 +243,8 @@ Notes:
 * Revoking a key means deleting the principal and redeploying/restarting.
   There is no revocation list and no expiry.
 * The client's bearer value is never forwarded upstream; the backend only ever
-  sees the catalog's own `auth.bearer_token`.
+  sees the catalog's own backend token — `auth.bearer_token`, or
+  `auth.bearer_token_write` when the principal holds `write`.
 
 ---
 
@@ -273,7 +275,9 @@ deployment: it pulls the account id and Cloudflare API token from Google Secret
 Manager (`cdsci-infra` project), discovers the R2 catalog's UUID prefix from
 the backend's own `/v1/config`, swaps `config.production.yaml` into place (and
 restores `config.yaml` on exit), deploys, then pushes `CF_ACCOUNT_ID`,
-`R2_BUCKET`, `CF_API_TOKEN` and `R2_CATALOG_PREFIX` as Workers secrets. It is
+`R2_BUCKET`, `CF_API_TOKEN_RO`, `CF_API_TOKEN_RW` and `R2_CATALOG_PREFIX` as
+Workers secrets (the token pair is minted once by
+`scripts/create-backend-tokens.sh` — see section 6). It is
 specific to that project's secret store — read it as a worked example and
 substitute your own source of values. Redeploying is simply rerunning it.
 
@@ -310,7 +314,7 @@ docker build -t icegate .
 docker run -p 8787:8787 \
   -v /etc/icegate/config.yaml:/config.yaml:ro \
   -e ICEGATE_CONFIG=/config.yaml \
-  -e CF_ACCOUNT_ID=... -e CF_API_TOKEN=... \
+  -e CF_ACCOUNT_ID=... -e CF_API_TOKEN_RO=... -e CF_API_TOKEN_RW=... \
   icegate
 ```
 
@@ -347,7 +351,8 @@ catalogs:
     backend_warehouse: ${CF_ACCOUNT_ID}_${R2_BUCKET}
     backend_prefix: ${R2_CATALOG_PREFIX}     # R2's stable per-catalog UUID
     auth:
-      bearer_token: ${CF_API_TOKEN}
+      bearer_token: ${CF_API_TOKEN_RO}       # default for every request
+      bearer_token_write: ${CF_API_TOKEN_RW} # only for principals granted write
     capabilities:
       read: true
       write: false
@@ -357,15 +362,17 @@ catalogs:
 
 1. **Enable the R2 Data Catalog on the bucket** (Cloudflare dashboard, or
    wrangler's `r2 bucket catalog enable`).
-2. **Create a Cloudflare API token** with R2 permissions — see
-   [Cloudflare's manage-catalogs docs](https://developers.cloudflare.com/r2/data-catalog/manage-catalogs/).
-   Read the warning below before choosing permission groups.
+2. **Mint the backend token pair** with `scripts/create-backend-tokens.sh`
+   (needs `CF_ACCOUNT_ID`, `R2_BUCKET`, and a `CLOUDFLARE_API_TOKEN` holding
+   *Account API Tokens Write*). It creates one read-only and one read-write
+   token, both storage-scoped to the single bucket — the dashboard presets
+   cannot express that; read the warning below before substituting your own.
 3. **Discover the catalog's prefix.** R2 returns a stable per-catalog UUID as
    `overrides.prefix`; every path after `/v1/` must carry it or R2 404s. Fetch
    it once:
 
    ```bash
-   curl -sf -H "Authorization: Bearer $CF_API_TOKEN" \
+   curl -sf -H "Authorization: Bearer $CF_API_TOKEN_RO" \
      "https://catalog.cloudflarestorage.com/$CF_ACCOUNT_ID/$R2_BUCKET/v1/config?warehouse=${CF_ACCOUNT_ID}_${R2_BUCKET}" \
      | python3 -c 'import json,sys; print(json.load(sys.stdin)["overrides"]["prefix"])'
    ```
@@ -377,31 +384,36 @@ catalogs:
 
 ### The anonymous-catalog token requirement
 
-If your catalog is reachable **anonymously**, the backend token you configure
-MUST be read-only on *both* the catalog and the object store: permission groups
-`Workers R2 Data Catalog Read` **and** `Workers R2 Storage Read` (the
-dashboard's "Admin Read only" preset). This is not optional hardening — it is
-the only thing standing between an anonymous reader and your bucket.
+If your catalog is reachable **anonymously**, the token that serves anonymous
+requests (`auth.bearer_token`) MUST be read-only on *both* the catalog and the
+object store. This is not optional hardening — it is the only thing standing
+between an anonymous reader and your bucket.
 
 Why: clients reach data through **credential vending**. The backend hands the
-client temporary SigV4 credentials in the `loadTable` response, and those
-credentials inherit the *storage* permissions of the token the gateway
-authenticated with. A catalog-read-only + storage-read-write token therefore
-still lets any client that can call `loadTable` write objects directly into the
-bucket, including catalog metadata files. `capabilities.write: false` blocks
-commits at the REST layer and does nothing about that path.
+client SigV4 credentials in the `loadTable` response, and those credentials
+inherit the *storage* permissions of the token the gateway authenticated with.
+A catalog-read-only + storage-read-write token therefore still lets any client
+that can call `loadTable` write objects directly into the bucket, including
+catalog metadata files. `capabilities.write: false` blocks commits at the REST
+layer and does nothing about that path.
+
+The two-token split makes this structural: reads — anonymous and read-only
+keys alike — never touch the write token, so a read-path bug would have to
+actively select the wrong token to leak write access. Keep writes behind API
+keys (`permissions: [write]` principals get `bearer_token_write`), as
+`config.production.yaml` does.
 
 ### Blast radius
 
-R2's catalog permission groups are **account-scoped**; there is no per-bucket
-catalog token. A token minted for one warehouse can read every R2 Data Catalog
-in that Cloudflare account. If you need an exposure boundary, draw it at the
-Cloudflare **account** level — one account per trust domain, not one bucket per
-trust domain.
-
-For a read-write deployment, use a token with the corresponding write
-permission groups and keep the catalog behind API keys (`anonymous.enabled:
-false`), as `config.production.yaml` does.
+R2's *catalog* permission groups are **account-scoped**; a token's catalog
+half can read (or write) every R2 Data Catalog in the Cloudflare account. The
+*storage* half, however, CAN be scoped to a single bucket — but only for
+tokens created through the token API; the dashboard R2 presets ("Admin Read
+only", "Admin Read & Write") are account-wide on both halves. That is why
+`scripts/create-backend-tokens.sh` exists: it pairs the account-scoped catalog
+group with a bucket-scoped `Workers R2 Storage Bucket Item Read`/`Write`
+group, so vended credentials cannot reach any other bucket. For catalog
+*metadata* isolation the boundary is still the Cloudflare **account**.
 
 ### Vended credentials and remote signing
 

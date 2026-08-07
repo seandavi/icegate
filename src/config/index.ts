@@ -37,7 +37,14 @@ const catalog = z
       .string()
       .refine((s) => !s.includes("/"), 'must be a single path segment (no "/")')
       .optional(),
-    auth: z.object({ bearer_token: z.string().min(1) }).strict(),
+    auth: z
+      .object({
+        bearer_token: z.string().min(1),
+        // Selected instead of bearer_token when the principal holds `write`
+        // (issue #34). Absent → bearer_token serves every request.
+        bearer_token_write: z.string().min(1).optional(),
+      })
+      .strict(),
     capabilities: z.object({ read: z.boolean(), write: z.boolean() }).strict(),
   })
   .strict();

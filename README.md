@@ -110,7 +110,8 @@ catalogs:
     endpoint: https://catalog.cloudflarestorage.com/${CF_ACCOUNT_ID}/${R2_BUCKET}
     backend_warehouse: ${CF_ACCOUNT_ID}_${R2_BUCKET}
     backend_prefix: ${R2_CATALOG_PREFIX}
-    auth: { bearer_token: ${CF_API_TOKEN} }
+    # read-only token for everyone; write keys get the (optional) write token
+    auth: { bearer_token: ${CF_API_TOKEN_RO}, bearer_token_write: ${CF_API_TOKEN_RW} }
     capabilities: { read: true, write: false }
   scratch:            # second backend behind the same gateway
     endpoint: https://polaris.internal.example.com

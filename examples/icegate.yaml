@@ -48,7 +48,11 @@ catalogs:
     backend_prefix: ${R2_CATALOG_PREFIX}
 
     auth:
-      bearer_token: ${CF_API_TOKEN}
+      # Default backend token, used for every request (anonymous included).
+      bearer_token: ${CF_API_TOKEN_RO}
+      # Optional: sent instead when the principal is granted `write`, so read
+      # paths never carry write-capable credentials (docs/operators.md §6).
+      bearer_token_write: ${CF_API_TOKEN_RW}
 
     capabilities:
 
