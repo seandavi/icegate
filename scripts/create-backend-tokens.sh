@@ -14,7 +14,10 @@
 #
 # Requires: curl, python3, CF_ACCOUNT_ID, R2_BUCKET, and CLOUDFLARE_API_TOKEN
 # holding "Account API Tokens Write".
+#
+# Usage: scripts/create-backend-tokens.sh [ro|rw]   (default: both)
 set -euo pipefail
+WHICH=${1:-both}
 
 : "${CF_ACCOUNT_ID:?set CF_ACCOUNT_ID}"
 : "${R2_BUCKET:?set R2_BUCKET (no default — this decides what the tokens can reach)}"
@@ -64,5 +67,5 @@ PY
   cf -X POST "$API" --data "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["value"])'
 }
 
-echo "CF_API_TOKEN_RO=$(create "icegate-$R2_BUCKET-ro" "Workers R2 Data Catalog Read" "Workers R2 Storage Bucket Item Read")"
-echo "CF_API_TOKEN_RW=$(create "icegate-$R2_BUCKET-rw" "Workers R2 Data Catalog Write" "Workers R2 Storage Bucket Item Write")"
+case $WHICH in ro|both) echo "CF_API_TOKEN_RO=$(create "icegate-$R2_BUCKET-ro" "Workers R2 Data Catalog Read" "Workers R2 Storage Bucket Item Read")";; esac
+case $WHICH in rw|both) echo "CF_API_TOKEN_RW=$(create "icegate-$R2_BUCKET-rw" "Workers R2 Data Catalog Write" "Workers R2 Storage Bucket Item Write")";; esac

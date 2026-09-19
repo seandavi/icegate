@@ -358,6 +358,22 @@ catalogs:
       write: false
 ```
 
+### The short way
+
+For a catalog that follows the one-Worker-per-catalog convention (bucket,
+catalog key and Worker suffix all the same `<name>`; secrets in Google Secret
+Manager), two scripts do every step below, idempotently:
+
+```bash
+scripts/new-catalog.sh <name> [namespace ...] > ../<data-repo>/icegate.yaml   # bucket, CORS, Data Catalog, API keys
+# review + commit icegate.yaml in the data repo, then:
+scripts/deploy-catalog.sh <name> ../<data-repo>/icegate.yaml                  # deploy; first run mints tokens + sets secrets
+```
+
+`deploy-catalog.sh` refuses a config whose default backend token is not
+`${CF_API_TOKEN_RO}` — see the anonymous-catalog requirement below. The manual
+steps remain the reference for what the scripts do.
+
 ### Setup steps
 
 1. **Enable the R2 Data Catalog on the bucket** (Cloudflare dashboard, or
