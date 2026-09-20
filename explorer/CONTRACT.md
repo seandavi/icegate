@@ -93,7 +93,14 @@ name on its own** — a class in only one of the two places is the failure mode.
 | `.custom-endpoint-form` | app.js | the custom-endpoint form |
 | `.ident` | app.js, table.js | an identifier not already in `<code>` |
 | `.prose-width` | index.html | the reading-width cap — see below |
+| `.brand`, `.brand-mark` | index.html | header wordmark and its inline SVG |
+| `#theme-toggle` | app.js | the system/light/dark cycle button |
 | `.status`, `.warn`, `.muted`, `.card`, `.tabs`, `.copy-wrap`, `.copy-btn`, `.sql` | several | shared furniture |
+
+Structural ids styled directly — `#main`, `#directory-main`, `.layout` — are
+declared in `index.html` and read by name in `app.js`. Renaming one silently
+breaks the other; `app.js` looks them up with `getElementById` and will throw
+on null at module load, which is how this was last caught.
 
 ## State lives in exactly one place each
 
