@@ -124,6 +124,15 @@ Full configuration reference, key minting, the three deploy paths, and the
 R2-specific wiring (including the security-critical read-only-token rule for
 anonymous catalogs): **[operator guide](docs/operators.md)**.
 
+## Explorer
+
+A static, build-free browser for any Iceberg REST catalog lives in
+[`explorer/`](explorer/) — a warehouse -> namespace -> table tree, per-table
+schema with live column stats, real snapshot history, and read-only SQL, all
+in the browser via DuckDB-WASM. It deploys as its own Worker
+(`npm run deploy:explorer`) and talks to catalogs over the REST API, so it
+works against any standards-compliant catalog, not only icegate-fronted ones.
+
 ## Documentation
 
 | Audience | Doc |
