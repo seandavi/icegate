@@ -29,8 +29,13 @@
   --shadow-md: 0 2px 4px rgb(16 21 28 / .06), 0 4px 12px rgb(16 21 28 / .08);
 }
 
+/* Dark tokens, duplicated in two places for the manual theme override (no
+   build step to share them): here for "OS prefers dark and user hasn't
+   forced light", and again below in :root[data-theme="dark"] for "user
+   forced dark on a light OS". KEEP THESE TWO TOKEN LISTS IN SYNC. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #0d1117;
     --surface: #141a22;
     --surface-2: #1b222c;
@@ -49,6 +54,34 @@
     --shadow-sm: none;
     --shadow-md: none;
   }
+}
+
+/* Same token list as the media query above — keep the two in sync. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --surface: #141a22;
+  --surface-2: #1b222c;
+  --border: #252d38;
+  --border-strong: #38424f;
+  --fg: #e8edf4;
+  --fg-muted: #97a2b1;
+  --fg-subtle: #8a94a3;
+  --accent: #6ea8ff;
+  --accent-fg: #8bbaff;
+  --accent-weak: #17283f;
+  --warn-bg: #2a2210;
+  --warn-border: #8a6d1c;
+  --warn-fg: #e8d9a8;
+  --shadow-sm: none;
+  --shadow-md: none;
+}
+
+/* Explicit light choice on a dark OS: tokens already fall back to :root's
+   light values (the :not([data-theme="light"]) guard above keeps them out),
+   this just stops scrollbars/form controls from rendering dark. */
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -128,6 +161,12 @@ header #switcher select {
   border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s1) var(--s2);
 }
 header #switcher a { font-size: var(--t-sm); }
+#theme-toggle {
+  font: inherit; background: var(--surface); color: var(--fg);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s1) var(--s2);
+  display: flex; align-items: center; cursor: pointer;
+}
+#theme-toggle:hover { border-color: var(--border-strong); }
 
 /* ---------- layout ---------- */
 

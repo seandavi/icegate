@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>icegate explorer</title>
 <meta name="description" content="Browse any Iceberg REST catalog served through icegate: namespaces, tables, column docs, schema stats and snapshot history, read live and anonymously.">
+<script>
+  // Apply a stored theme override before first paint, so there's no flash of
+  // the wrong theme. Runs before the stylesheet link; app.js is a deferred
+  // module and would run too late for this.
+  try {
+    var t = localStorage.getItem("icegate_explorer_theme");
+    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+  } catch {}
+</script>
 <link rel="stylesheet" href="style.css">
 <!--
   The query tab needs this: DuckDB-WASM's browser build imports the bare

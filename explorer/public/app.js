@@ -76,6 +76,52 @@ function navigate(route) {
 
 window.addEventListener("popstate", () => render(currentRoute()));
 
+// ---------- theme override (system/light/dark, default system) ----------
+
+const THEME_KEY = "icegate_explorer_theme";
+const THEME_NEXT = { system: "light", light: "dark", dark: "system" };
+const THEME_DESC = { system: "follows system", light: "light", dark: "dark" };
+// half-filled circle / sun / moon, 16px, currentColor
+const THEME_ICON = {
+  system: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="6.3"/><path d="M8 1.7a6.3 6.3 0 0 1 0 12.6z" fill="currentColor" stroke="none"/></svg>',
+  light: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3.2"/><path d="M8 .8v1.9M8 13.3v1.9M15.2 8h-1.9M2.7 8H.8M12.9 3.1l-1.3 1.3M4.4 11.6l-1.3 1.3M12.9 12.9l-1.3-1.3M4.4 4.4 3.1 3.1"/></svg>',
+  dark: '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.8 10.1A6 6 0 0 1 5.9 2.2a6 6 0 1 0 7.9 7.9z"/></svg>',
+};
+
+function getTheme() {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === "light" || t === "dark" ? t : "system";
+  } catch {
+    return "system"; // ponytail: blocked storage just means "system", not a crash
+  }
+}
+
+function setTheme(theme) {
+  try {
+    if (theme === "system") localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // private mode etc — the attribute below still applies for this load
+  }
+  if (theme === "system") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", theme);
+}
+
+function renderThemeToggle() {
+  const theme = getTheme();
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.id = "theme-toggle";
+  btn.innerHTML = THEME_ICON[theme];
+  btn.setAttribute("aria-label", `Theme: ${THEME_DESC[theme]}. Click for ${THEME_DESC[THEME_NEXT[theme]]}.`);
+  btn.addEventListener("click", () => {
+    setTheme(THEME_NEXT[theme]);
+    switcherEl.replaceChild(renderThemeToggle(), btn);
+  });
+  return btn;
+}
+
 // ---------- header switcher ----------
 
 const catalogSub = document.getElementById("catalog-sub");
@@ -83,6 +129,8 @@ const switcherEl = document.getElementById("switcher");
 
 function renderSwitcher(activeCatalog) {
   switcherEl.innerHTML = "";
+
+  switcherEl.appendChild(renderThemeToggle());
 
   const back = document.createElement("a");
   back.href = location.pathname;
