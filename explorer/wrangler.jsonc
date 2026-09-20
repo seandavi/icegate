@@ -1,0 +1,11 @@
+{
+  // Static site only — no Worker script. Workers Static Assets serves
+  // explorer/public/ directly; there is no backend here to grow gateway
+  // concerns into (icegate's own AGENTS.md: that boundary belongs to icegate
+  // itself, not this catalog-agnostic browser client).
+  "name": "icegate-explorer",
+  "compatibility_date": "2026-09-18",
+  "assets": {
+    "directory": "./public"
+  }
+}

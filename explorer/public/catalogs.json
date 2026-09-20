@@ -1,0 +1,9 @@
+[
+  {
+    "id": "canceronice",
+    "label": "cancerOnIce",
+    "endpoint": "https://icegate-canceronice.seandavi.workers.dev",
+    "warehouse": "canceronice",
+    "description": "US cancer surveillance and environmental exposure tables, read anonymously through icegate."
+  }
+]
