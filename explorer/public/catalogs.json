@@ -5,5 +5,12 @@
     "endpoint": "https://icegate-canceronice.seandavi.workers.dev",
     "warehouse": "canceronice",
     "description": "US cancer surveillance and environmental exposure tables, read anonymously through icegate."
+  },
+  {
+    "id": "bioconice",
+    "label": "biocOnIce",
+    "endpoint": "https://icegate-bioconice.seandavi.workers.dev",
+    "warehouse": "bioconice",
+    "description": "Bioconductor annotation without the packages: gene, transcript and ontology tables for every species, queryable at any release."
   }
 ]
