@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Iceberg Catalog Explorer</title>
+<title>icegate explorer</title>
 <meta name="description" content="Browse any Iceberg REST catalog served through icegate: namespaces, tables, column docs, schema stats and snapshot history, read live and anonymously.">
 <link rel="stylesheet" href="style.css">
 <!--
@@ -17,21 +17,29 @@
 </head>
 <body>
 <header>
-  <h1>Iceberg Catalog Explorer</h1>
+  <h1 class="brand">
+    <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M12 2v20M4.2 6l15.6 12M4.2 18L19.8 6
+               M12 4.4l-1.8 1.6M12 4.4l1.8 1.6M12 19.6l-1.8-1.6M12 19.6l1.8-1.6
+               M5.8 7.4l.3 2.3M5.8 7.4l2.2-.8M18.2 16.6l-.3-2.3M18.2 16.6l-2.2.8
+               M18.2 7.4l-2.2-.8M18.2 7.4l-.3 2.3M5.8 16.6l2.2.8M5.8 16.6l.3-2.3" />
+    </svg>
+    <span>icegate explorer</span>
+  </h1>
   <span class="sub" id="catalog-sub"></span>
   <div id="switcher"></div>
 </header>
 
-<main id="directory-main" hidden>
+<main id="directory-main" class="prose-width" hidden>
   <section id="view-directory"></section>
 </main>
 
 <div id="view-browse" class="layout" hidden>
   <nav id="catalog" aria-label="Namespaces and tables">
-    <h2>Namespaces</h2>
     <div id="catalog-tree"></div>
   </nav>
-  <main id="main"><div id="table-view"></div></main>
+  <main id="main" class="prose-width"><div id="table-view"></div></main>
 </div>
 
 <script type="module" src="app.js"></script>

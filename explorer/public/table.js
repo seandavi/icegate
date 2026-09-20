@@ -31,14 +31,36 @@ export async function renderTableDetail(container, catalog, ns, table) {
 
   container.innerHTML = "";
 
+  const pageHead = document.createElement("div");
+  pageHead.className = "page-head";
+
   const h2 = document.createElement("h2");
-  h2.textContent = `${nsName}.${table}`;
-  container.appendChild(h2);
+  h2.className = "ident";
+  const nsSpan = document.createElement("span");
+  nsSpan.className = "muted";
+  nsSpan.textContent = nsName;
+  h2.appendChild(nsSpan);
+  h2.appendChild(document.createTextNode("."));
+  h2.appendChild(document.createTextNode(table));
+  pageHead.appendChild(h2);
 
   const commentP = document.createElement("p");
   commentP.className = "muted";
   commentP.textContent = props.comment || "(no table comment)";
-  container.appendChild(commentP);
+  pageHead.appendChild(commentP);
+
+  container.appendChild(pageHead);
+
+  const cur = (meta.snapshots || []).find((s) => s["snapshot-id"] === meta["current-snapshot-id"]);
+  const sum = cur?.summary || {};
+  const statRow = document.createElement("div");
+  statRow.className = "stat-row";
+  statRow.appendChild(statTile(fmtCount(sum["total-records"]), "Total records"));
+  statRow.appendChild(statTile(fmtCount(sum["total-data-files"]), "Data files"));
+  // spec field is `total-files-size`; tolerate the alternate name too.
+  statRow.appendChild(statTile(humanizeBytes(sum["total-files-size"] ?? sum["total-file-size-in-bytes"]), "Total size"));
+  statRow.appendChild(statTile(meta["format-version"] ?? "–", "Format version"));
+  container.appendChild(statRow);
 
   const tabDefs = [
     ["overview", "Overview"],
@@ -66,7 +88,7 @@ export async function renderTableDetail(container, catalog, ns, table) {
   }
   container.appendChild(tabsNav);
 
-  panels.overview = renderOverview(catalog, ns, table, meta, schema, props);
+  panels.overview = renderOverview(catalog, ns, table, meta, schema, props, cur, sum);
   container.appendChild(panels.overview);
 
   panels.schema = renderSchema(catalog, ns, table, schema, keyIds);
@@ -102,7 +124,30 @@ export async function renderTableDetail(container, catalog, ns, table) {
 
 // ---------- Overview ----------
 
-function renderOverview(catalog, ns, table, meta, schema, props) {
+// Snapshot counts arrive as strings and get large; an unseparated 1248000 is
+// not a glanceable number.
+function fmtCount(v) {
+  // Number("") is 0, so an empty summary value would read as a real zero.
+  if (v == null || v === "") return "–";
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toLocaleString("en-US") : "–";
+}
+
+function statTile(value, label) {
+  const div = document.createElement("div");
+  div.className = "stat";
+  const val = document.createElement("div");
+  val.className = "stat-value";
+  val.textContent = value;
+  const lbl = document.createElement("div");
+  lbl.className = "stat-label";
+  lbl.textContent = label;
+  div.appendChild(val);
+  div.appendChild(lbl);
+  return div;
+}
+
+function renderOverview(catalog, ns, table, meta, schema, props, cur, sum) {
   const el = document.createElement("div");
   el.appendChild(sectionTitle("Copyable DuckDB snippet"));
   el.appendChild(sqlBlock(attachSql(catalog, ns, table)));
@@ -127,19 +172,14 @@ function renderOverview(catalog, ns, table, meta, schema, props) {
     el.appendChild(p);
   }
 
-  const cur = (meta.snapshots || []).find((s) => s["snapshot-id"] === meta["current-snapshot-id"]);
-  const sum = cur?.summary || {};
+  // total-records, total-data-files, total-size and format-version live in
+  // the stat tiles above (renderTableDetail) — not repeated here.
   el.appendChild(sectionTitle("Table"));
   el.appendChild(
     kvTable([
-      ["location", meta.location || "–"],
-      ["format-version", meta["format-version"] ?? "–"],
-      ["current-snapshot-id", meta["current-snapshot-id"] ?? "–"],
+      ["location", meta.location || "–", "ident"],
+      ["current-snapshot-id", meta["current-snapshot-id"] ?? "–", "ident"],
       ["current-snapshot-timestamp", cur ? fmtTs(cur["timestamp-ms"]) : "–"],
-      ["total-records", sum["total-records"] ?? "–"],
-      ["total-data-files", sum["total-data-files"] ?? "–"],
-      // spec field is `total-files-size`; tolerate the alternate name too.
-      ["total-size", humanizeBytes(sum["total-files-size"] ?? sum["total-file-size-in-bytes"])],
     ])
   );
 
@@ -166,11 +206,12 @@ function humanizeBytes(n) {
 
 function kvTable(pairs) {
   const t = document.createElement("table");
-  t.className = "cols";
+  t.className = "kv";
   const tbody = document.createElement("tbody");
-  for (const [k, v] of pairs) {
+  for (const [k, v, valueClass] of pairs) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td><code>${escapeHtml(k)}</code></td><td>${escapeHtml(String(v))}</td>`;
+    const cls = valueClass ? ` class="${valueClass}"` : "";
+    tr.innerHTML = `<td><code>${escapeHtml(k)}</code></td><td${cls}>${escapeHtml(String(v))}</td>`;
     tbody.appendChild(tr);
   }
   t.appendChild(tbody);

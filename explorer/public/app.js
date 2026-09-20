@@ -169,7 +169,7 @@ async function renderDirectory() {
     card.appendChild(h3);
     if (catalog.description) {
       const desc = document.createElement("p");
-      desc.className = "muted";
+      desc.className = "cat-desc";
       desc.textContent = catalog.description;
       card.appendChild(desc);
     }
@@ -237,10 +237,111 @@ function appendCustomForm(container) {
 
 const tree = document.getElementById("catalog-tree");
 
+// ---------- sidebar filter ----------
+// The tree is already in memory once loaded, so filtering it is a DOM loop,
+// not a fetch. It is not URL state: it resets whenever the tree is rebuilt
+// (catalog switch), same as the "no matches" line below.
+
+const catalogNav = document.getElementById("catalog");
+const treeLabel = document.createElement("h2");
+treeLabel.className = "eyebrow";
+treeLabel.textContent = "Namespaces";
+catalogNav.insertBefore(treeLabel, catalogNav.firstChild);
+
+const treeFilter = document.createElement("input");
+treeFilter.type = "search";
+treeFilter.className = "tree-filter";
+treeFilter.setAttribute("aria-label", "Filter namespaces and tables");
+treeFilter.placeholder = "Filter tables…";
+catalogNav.insertBefore(treeFilter, treeLabel);
+
+let currentNs = null; // ns/table of the current selection, for re-expanding
+let currentTable = null; // it via highlight() once a filter is cleared
+let noMatchEl = null;
+
+function collapseAllGroups() {
+  for (const group of tree.querySelectorAll(".ns-group")) {
+    group.querySelector(".ns-button")?.setAttribute("aria-expanded", "false");
+    const ul = group.querySelector("ul.tables");
+    if (ul) ul.hidden = true;
+  }
+}
+
+function setNoMatchMessage(term) {
+  if (term === null) {
+    noMatchEl?.remove();
+    noMatchEl = null;
+    return;
+  }
+  if (!noMatchEl) {
+    noMatchEl = document.createElement("p");
+    noMatchEl.className = "muted";
+    tree.appendChild(noMatchEl);
+  }
+  noMatchEl.textContent = `No namespace or table matches \`${term}\``;
+}
+
+function applyFilter(rawTerm) {
+  const term = rawTerm.trim();
+  const q = term.toLowerCase();
+  const groups = tree.querySelectorAll(".ns-group");
+
+  if (!q) {
+    for (const group of groups) {
+      group.hidden = false;
+      for (const li of group.querySelectorAll("ul.tables li")) li.hidden = false;
+    }
+    // ponytail: don't snapshot/restore each group's own prior expand state —
+    // collapse everything and let highlight() reopen the selected group, the
+    // same way it does on every render. Not worth the bookkeeping.
+    collapseAllGroups();
+    highlight(currentNs, currentTable);
+    setNoMatchMessage(null);
+    return;
+  }
+
+  let anyMatch = false;
+  for (const group of groups) {
+    const nsMatches = (group.dataset.nsLabel || "").toLowerCase().includes(q);
+    const btn = group.querySelector(".ns-button");
+    const ul = group.querySelector("ul.tables");
+    let groupMatches = nsMatches;
+
+    if (ul) {
+      for (const li of ul.querySelectorAll("li")) {
+        const tbtn = li.querySelector("button");
+        const tableMatches = nsMatches || tbtn.dataset.table.toLowerCase().includes(q);
+        li.hidden = !tableMatches;
+        if (tableMatches) groupMatches = true;
+      }
+    }
+
+    group.hidden = !groupMatches;
+    if (groupMatches) {
+      anyMatch = true;
+      // Filter-driven expansion: keep aria-expanded and ul.hidden in lockstep,
+      // same pair the click handler and highlight() already maintain.
+      if (ul) ul.hidden = false;
+      btn?.setAttribute("aria-expanded", "true");
+    }
+  }
+
+  setNoMatchMessage(anyMatch ? null : term);
+}
+
+treeFilter.addEventListener("input", () => applyFilter(treeFilter.value));
+treeFilter.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  treeFilter.value = "";
+  applyFilter("");
+});
+
 async function renderBrowse(catalog, deepNs, deepTable) {
   directoryMain.hidden = true;
   viewBrowse.hidden = false;
   tree.innerHTML = "";
+  treeFilter.value = ""; // filter is not URL state — reset on every tree rebuild
+  noMatchEl = null;
   tree.appendChild(status("Loading namespaces…", true));
 
   const api = makeApi(catalog);
@@ -269,6 +370,8 @@ async function renderBrowse(catalog, deepNs, deepTable) {
 }
 
 async function updateTableView(catalog, ns, table) {
+  currentNs = ns;
+  currentTable = table;
   highlight(ns, table);
   const tableView = document.getElementById("table-view");
   if (ns && table) {
@@ -284,6 +387,7 @@ async function renderNamespaceGroup(catalog, api, nsParts, deepNs, deepTable) {
   const nsLabel = nsParts.join(".");
   const group = document.createElement("div");
   group.className = "ns-group";
+  group.dataset.nsLabel = nsLabel; // filter match target, kept off the button text
 
   let nsInfo = { properties: {} };
   let tablesInfo = { identifiers: [] };
@@ -303,7 +407,10 @@ async function renderNamespaceGroup(catalog, api, nsParts, deepNs, deepTable) {
   const btn = document.createElement("button");
   btn.className = "ns-button";
   btn.setAttribute("aria-expanded", String(isDeepMatch || false));
-  btn.append(`${nsLabel} `);
+  const nameSpan = document.createElement("span");
+  nameSpan.className = "ident";
+  nameSpan.textContent = nsLabel;
+  btn.appendChild(nameSpan);
   const count = document.createElement("span");
   count.className = "count";
   count.textContent = loadError ? "error" : String(tables.length);
@@ -331,7 +438,10 @@ async function renderNamespaceGroup(catalog, api, nsParts, deepNs, deepTable) {
   for (const table of tables) {
     const li = document.createElement("li");
     const tbtn = document.createElement("button");
-    tbtn.textContent = table;
+    const identSpan = document.createElement("span");
+    identSpan.className = "ident";
+    identSpan.textContent = table;
+    tbtn.appendChild(identSpan);
     tbtn.dataset.ns = nsParts.join(NS_SEP);
     tbtn.dataset.table = table;
     tbtn.setAttribute("aria-current", String(isDeepMatch && table === deepTable));
