@@ -139,36 +139,48 @@ curl -sD- -o /dev/null -X OPTIONS \
   "https://<account>.r2.cloudflarestorage.com/<bucket>/" | grep -iE "^HTTP|access-control"
 ```
 
-Fix it by putting this policy on the bucket. These are the exact values a
-working bucket in this project serves — the three allowed headers are the ones
-the S3 request signing actually sends, and omitting them fails the preflight
-even when the origin is allowed:
+Fix it by putting this policy on the bucket — these are the exact values a
+working bucket in this project serves, committed as
+[`r2-cors.json`](r2-cors.json):
 
 ```json
-[
-  {
-    "AllowedOrigins": ["*"],
-    "AllowedMethods": ["GET", "HEAD"],
-    "AllowedHeaders": ["authorization", "x-amz-content-sha256", "x-amz-date"],
-    "MaxAgeSeconds": 3600
-  }
-]
+{
+  "rules": [
+    {
+      "allowed": { "origins": ["*"], "methods": ["GET", "HEAD"], "headers": ["*"] },
+      "exposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}
 ```
 
 ```sh
-npx wrangler r2 bucket cors set <bucket> --file cors.json
+npx wrangler r2 bucket cors set <bucket> --file explorer/r2-cors.json
 npx wrangler r2 bucket cors list <bucket>    # confirm
 ```
 
-`GET` and `HEAD` are all that is needed — this is a read-only page, and the
-bucket should not allow a browser to do anything else.
+Two parts of that are easy to get wrong and both break Query in ways the error
+message does not explain:
+
+- **`exposeHeaders` is not optional.** DuckDB-WASM reads Parquet with HTTP
+  range requests, so the browser has to let it *see* `Content-Range` and
+  `Accept-Ranges` on the response. Allowing the request without exposing these
+  gets you a preflight that passes and reads that fail.
+- **`GET` and `HEAD` are all that belong there.** This is a read-only page;
+  the bucket should not let a browser do anything else.
+
+Note that a preflight response echoes back whatever headers the caller asked
+for, so `Access-Control-Allow-Headers` in a `curl` result tells you what you
+requested, not what the bucket policy says. Read the policy itself with
+`wrangler r2 bucket cors list`.
 
 ### Known status
 
 | Catalog | Layer 1 (catalog) | Layer 2 (bucket) |
 | --- | --- | --- |
 | `canceronice` | ✅ | ✅ |
-| `bioconice` | ✅ | ❌ **not yet configured** — browsing works, Query and Analyze fail |
+| `bioconice` | ✅ | ✅ |
 
 ## Adding a catalog to the registry
 
